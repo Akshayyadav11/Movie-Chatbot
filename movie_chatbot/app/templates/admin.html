@@ -1,42 +1,172 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Admin Dashboard</h1>
-
-<div class="admin-section">
-    <h2>Upcoming Movies</h2>
-    <div class="chart-container">
-        <img src="/api/admin/report/plot" alt="Upcoming Movies Chart">
-    </div>
-    <div class="movie-grid">
-        {% for movie in upcoming_movies %}
-        <div class="movie-card">
-            <h3>{{ movie.title }} ({{ movie.year }})</h3>
-            <p>Release: {{ movie.release_date }}</p>
-            <p>Rating: {{ movie.rating }}</p>
+<div class="admin-container">
+    <header class="admin-header">
+        <h1>Admin Dashboard</h1>
+        <div class="admin-stats">
+            <div class="stat-card">
+                <h3>Total Movies</h3>
+                <p>{{ latest_movies|length + upcoming_movies|length }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Latest Releases</h3>
+                <p>{{ latest_movies|length }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Upcoming</h3>
+                <p>{{ upcoming_movies|length }}</p>
+            </div>
         </div>
-        {% endfor %}
-    </div>
-</div>
+    </header>
 
-<div class="admin-section">
-    <h2>Latest Releases</h2>
-    <div class="movie-grid">
-        {% for movie in latest_movies %}
-        <div class="movie-card">
-            <h3>{{ movie.title }} ({{ movie.year }})</h3>
-            <p>Released: {{ movie.release_date }}</p>
-            <p>Rating: {{ movie.rating }}</p>
+    <div class="admin-content">
+        <section class="admin-section">
+            <div class="section-header">
+                <h2>Movie Analytics</h2>
+                <div class="section-actions">
+                    <button id="refreshChart" class="btn btn-sm">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <a href="/api/admin/report/download" class="btn btn-primary">
+                        <i class="fas fa-download"></i> Download Full Report
+                    </a>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <div class="chart-loading" id="chartLoading">
+                    <div class="spinner"></div>
+                    <p>Loading chart data...</p>
+                </div>
+                <img id="analyticsChart" src="/api/admin/report/plot?t={{ now }}" 
+                     alt="Movie Analytics Chart" 
+                     onload="document.getElementById('chartLoading').style.display='none'"
+                     onerror="document.getElementById('chartLoading').innerHTML='<p>Error loading chart. Please try refreshing.</p>'">
+            </div>
+        </section>
+
+        <div class="grid-2col">
+            <section class="admin-section">
+                <div class="section-header">
+                    <h2>Upcoming Movies</h2>
+                    <span class="badge">{{ upcoming_movies|length }} movies</span>
+                </div>
+                <div class="movie-list">
+                    {% for movie in upcoming_movies %}
+                    <div class="movie-card">
+                        <div class="movie-poster">
+                            {% if movie.image %}
+                            <img src="{{ movie.image }}" alt="{{ movie.title }}">
+                            {% else %}
+                            <div class="no-poster">
+                                <i class="fas fa-film"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="movie-details">
+                            <h3>{{ movie.title }} ({{ movie.year }})</h3>
+                            <div class="movie-meta">
+                                <span class="rating">
+                                    <i class="fas fa-star"></i> {{ movie.rating or 'N/A' }}
+                                </span>
+                                <span class="release">
+                                    <i class="far fa-calendar-alt"></i> {{ movie.release_date }}
+                                </span>
+                            </div>
+                            {% if movie.genre %}
+                            <div class="genres">
+                                {% for genre in movie.genre.split(',') %}
+                                <span class="genre-tag">{{ genre.strip() }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="admin-section">
+                <div class="section-header">
+                    <h2>Latest Releases</h2>
+                    <span class="badge">{{ latest_movies|length }} movies</span>
+                </div>
+                <div class="movie-list">
+                    {% for movie in latest_movies %}
+                    <div class="movie-card">
+                        <div class="movie-poster">
+                            {% if movie.image %}
+                            <img src="{{ movie.image }}" alt="{{ movie.title }}">
+                            {% else %}
+                            <div class="no-poster">
+                                <i class="fas fa-film"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="movie-details">
+                            <h3>{{ movie.title }} ({{ movie.year }})</h3>
+                            <div class="movie-meta">
+                                <span class="rating">
+                                    <i class="fas fa-star"></i> {{ movie.rating or 'N/A' }}
+                                </span>
+                                <span class="release">
+                                    <i class="far fa-calendar-alt"></i> {{ movie.release_date }}
+                                </span>
+                            </div>
+                            {% if movie.genre %}
+                            <div class="genres">
+                                {% for genre in movie.genre.split(',') %}
+                                <span class="genre-tag">{{ genre.strip() }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
         </div>
-        {% endfor %}
     </div>
 </div>
 
-<div class="admin-actions">
-    <a href="/api/admin/report/download" class="btn">Download Latest Movies Report</a>
-</div>
-
+<script src="/static/js/auth.js"></script>
 <script>
-    // Admin dashboard functionality can be added here
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if user is authenticated
+    if (!isAuthenticated()) {
+        window.location.href = '/login';
+        return;
+    }
+    
+    // Set up authenticated fetch for all API calls
+    const authFetch = window.authFetch || fetch;
+    // Refresh chart data
+    document.getElementById('refreshChart').addEventListener('click', function() {
+        const chart = document.getElementById('analyticsChart');
+        const loading = document.getElementById('chartLoading');
+        
+        loading.style.display = 'flex';
+        chart.style.display = 'none';
+        
+        // Add timestamp to prevent caching
+        chart.src = `/api/admin/report/plot?t=${new Date().getTime()}`;
+        
+        chart.onload = function() {
+            loading.style.display = 'none';
+            chart.style.display = 'block';
+        };
+        
+        chart.onerror = function() {
+            loading.innerHTML = '<p>Error loading chart. Please try again.</p>';
+        };
+    });
+    
+    // Auto-refresh every 5 minutes
+    setInterval(() => {
+        const refreshBtn = document.getElementById('refreshChart');
+        if (refreshBtn) refreshBtn.click();
+    }, 300000);
+});
 </script>
 {% endblock %}
