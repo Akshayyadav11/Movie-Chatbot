@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Admin Dashboard</h1>
+
+<div class="admin-section">
+    <h2>Upcoming Movies</h2>
+    <div class="chart-container">
+        <img src="/api/admin/report/plot" alt="Upcoming Movies Chart">
+    </div>
+    <div class="movie-grid">
+        {% for movie in upcoming_movies %}
+        <div class="movie-card">
+            <h3>{{ movie.title }} ({{ movie.year }})</h3>
+            <p>Release: {{ movie.release_date }}</p>
+            <p>Rating: {{ movie.rating }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="admin-section">
+    <h2>Latest Releases</h2>
+    <div class="movie-grid">
+        {% for movie in latest_movies %}
+        <div class="movie-card">
+            <h3>{{ movie.title }} ({{ movie.year }})</h3>
+            <p>Released: {{ movie.release_date }}</p>
+            <p>Rating: {{ movie.rating }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="admin-actions">
+    <a href="/api/admin/report/download" class="btn">Download Latest Movies Report</a>
+</div>
+
+<script>
+    // Admin dashboard functionality can be added here
+</script>
+{% endblock %}
