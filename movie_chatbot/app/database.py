@@ -28,6 +28,24 @@ def get_mongo_client():
         mongo_client = MongoClient(MONGO_DB_URL, serverSelectionTimeoutMS=5000)
         mongo_db = mongo_client["movie_chatbot"]
         movies_collection = mongo_db["movies"]
+        
+        # Create text index if it doesn't exist
+        try:
+            # Drop existing text index if any
+            current_indexes = movies_collection.index_information()
+            for index_name in current_indexes:
+                if any('text' in idx for idx in current_indexes[index_name].get('key', [])):
+                    movies_collection.drop_index(index_name)
+            
+            # Create new text index on title, plot, and genres
+            movies_collection.create_index([
+                ("title", "text"),
+                ("plot", "text"),
+                ("genres", "text")
+            ])
+        except Exception as e:
+            import logging
+            logging.error(f"Error creating text index: {str(e)}")
     return mongo_client, mongo_db, movies_collection
 
 # Initialize MongoDB connection

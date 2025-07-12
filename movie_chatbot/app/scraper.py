@@ -4,198 +4,426 @@ from datetime import datetime
 from typing import List, Dict, Optional
 import time
 import logging
-import json
-from urllib.parse import urljoin, urlparse
 import re
-import os
+from urllib.parse import urljoin
 from .database import get_mongo_client
-from .models import Movie as MovieModel
+from .config import (
+    REQUEST_DELAY,
+    IMDB_TOP_MOVIES_URL,
+    SCRAPER_USER_AGENT,
+    LOGGING_CONFIG
+)
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 def get_http_session():
-    """Create and return a requests session with appropriate headers."""
+    """Create a session with realistic browser headers."""
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Referer': 'https://www.imdb.com/',
+        'DNT': '1',
+        'Upgrade-Insecure-Requests': '1',
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-Site': 'same-origin',
         'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-        'sec-ch-ua': '"Not.A/Brand";v="8", "Chromium";v="114", "Google Chrome";v="114"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
     })
     return session
 
-def scrape_imdb_movies():
-    """Scrape top 50 movies from IMDB and save them to the database."""
-    logger.info("Starting IMDB scraping...")
+def scrape_imdb_chart(chart_type='top'):
+    """Scrape movies from IMDB charts with updated selectors."""
+    charts = {
+        'top_250': {
+            'url': 'https://www.imdb.com/chart/top/',
+            'selector': 'li.ipc-metadata-list-summary-item',
+            'title_selector': 'h3.ipc-title__text',
+            'link_selector': 'a.ipc-title-link-wrapper',
+            'limit': 250,  # Top 250 movies
+            'source': 'imdb_top_250'
+        },
+        'popular': {
+            'url': 'https://www.imdb.com/chart/moviemeter/',
+            'selector': 'li.ipc-metadata-list-summary-item',
+            'title_selector': 'h3.ipc-title__text',
+            'link_selector': 'a.ipc-title-link-wrapper',
+            'limit': 100,  # Top 100 popular movies
+            'source': 'imdb_popular'
+        },
+        'trending': {
+            'url': 'https://www.imdb.com/chart/moviemeter/?ref_=nv_mv_mpm',
+            'selector': 'li.ipc-metadata-list-summary-item',
+            'title_selector': 'h3.ipc-title__text',
+            'link_selector': 'a.ipc-title-link-wrapper',
+            'limit': 50,  # Top 50 trending movies
+            'source': 'imdb_trending'
+        },
+        'action': {
+            'url': 'https://www.imdb.com/search/title/?genres=action&tags=action&title_type=feature&languages=en&count=100',
+            'selector': 'li.ipc-metadata-list-summary-item',
+            'title_selector': 'h3.ipc-title__text',
+            'link_selector': 'a.ipc-title-link-wrapper',
+            'limit': 100,  # Top 100 action movies
+            'source': 'imdb_action'
+        },
+        'comedy': {
+            'url': 'https://www.imdb.com/search/title/?genres=comedy&tags=comedy&title_type=feature&languages=en&count=100',
+            'selector': 'li.ipc-metadata-list-summary-item',
+            'title_selector': 'h3.ipc-title__text',
+            'link_selector': 'a.ipc-title-link-wrapper',
+            'limit': 100,  # Top 100 comedy movies
+            'source': 'imdb_comedy'
+        },
+        'horror': {
+            'url': 'https://www.imdb.com/search/title/?genres=horror&tags=horror&title_type=feature&languages=en&count=100',
+            'selector': 'li.ipc-metadata-list-summary-item',
+            'title_selector': 'h3.ipc-title__text',
+            'link_selector': 'a.ipc-title-link-wrapper',
+            'limit': 100,  # Top 100 horror movies
+            'source': 'imdb_horror'
+        }
+    }
+
+    if chart_type not in charts:
+        logger.error(f"Invalid chart type: {chart_type}")
+        return []
+
+    chart = charts[chart_type]
+    logger.info(f"Fetching {chart_type} chart from {chart['url']}")
     
-    # Get MongoDB collection
-    _, _, movies_collection = get_mongo_client()
-    
+    session = get_http_session()
     try:
-        # Create a session with proper headers
-        session = get_http_session()
+        # Add delay to mimic human behavior
+        time.sleep(2)
         
-        # Scrape top movies
-        url = "https://www.imdb.com/chart/top/"
-        logger.info(f"Fetching IMDB top movies from {url}")
-        
-        response = session.get(url, timeout=30)
+        response = session.get(
+            chart['url'],
+            headers={'Referer': 'https://www.imdb.com/'},
+            timeout=30
+        )
         response.raise_for_status()
         
-        # Check if we got a valid response
-        if not response.text.strip():
-            raise Exception("Received empty response from IMDB")
+        # Debug: Save HTML for inspection
+        with open(f'imdb_{chart_type}.html', 'w', encoding='utf-8') as f:
+            f.write(response.text)
             
         soup = BeautifulSoup(response.text, 'html.parser')
         movie_links = []
         
-        # Get top 50 movies
-        logger.info("Looking for movie links in the page...")
-        movie_elements = soup.select('ul.ipc-metadata-list li')
+        # Save HTML for debugging
+        with open(f'imdb_{chart_type}.html', 'w', encoding='utf-8') as f:
+            f.write(soup.prettify())
         
-        for elem in movie_elements[:50]:
-            link = elem.select_one('a.ipc-title-link-wrapper')
-            if link and link.get('href'):
-                full_url = f"https://www.imdb.com{link['href'].split('?')[0]}"
-                if '/title/tt' in full_url and full_url not in movie_links:
+        # Find all movie containers
+        movie_containers = soup.select(chart['selector'])
+        logger.info(f"Found {len(movie_containers)} movie containers")
+        
+        # Extract movie links
+        for container in movie_containers[:chart['limit']]:
+            try:
+                # Try to find link element
+                link_elem = container.select_one(chart.get('link_selector', 'a'))
+                if not link_elem:
+                    continue
+                    
+                # Get the href attribute
+                href = link_elem.get('href', '')
+                if not href or '/title/tt' not in href:
+                    continue
+                    
+                # Clean and format the URL
+                full_url = f"https://www.imdb.com{href.split('?')[0]}"
+                if full_url not in movie_links:
                     movie_links.append(full_url)
-        
-        logger.info(f"Found {len(movie_links)} movies to scrape")
-        
-        if not movie_links:
-            logger.warning("No movie links found to scrape")
-            return
-            
-        # Scrape each movie page
-        for i, url in enumerate(movie_links, 1):
-            try:
-                logger.info(f"Scraping movie {i}/{len(movie_links)}: {url}")
-                movie_data = scrape_movie_page(session, url)
-                
-                if movie_data:
-                    save_movie_data(movie_data, movies_collection)
-                    time.sleep(1)  # Be nice to the server
+                    
             except Exception as e:
-                logger.error(f"Error scraping {url}: {str(e)}", exc_info=True)
+                logger.warning(f"Error processing movie container: {e}")
                 continue
-                
-        logger.info("Finished scraping IMDB")
-            
+        
+        logger.info(f"Found {len(movie_links)} valid movie links")
+        return movie_links
+        
     except Exception as e:
-        logger.error(f"Error in scrape_imdb_movies: {str(e)}", exc_info=True)
-        raise
+        logger.error(f"Failed to scrape {chart_type} chart: {str(e)}", exc_info=True)
+        return []
+# def scrape_imdb_chart(chart_type='top'):
+#     """Working IMDb scraper as of July 2024"""
+#     charts = {
+#         'top': {
+#             'url': 'https://www.imdb.com/chart/top/',
+#             'selector': 'div.ipc-title-link-wrapper',  # Updated selector
+#             'limit': 10
+#         },
+#         'popular': {
+#             'url': 'https://www.imdb.com/chart/moviemeter/',
+#             'selector': 'div.ipc-title-link-wrapper',  # Same selector works for both
+#             'limit': 10
+#         }
+#     }
+    
+#     session = get_http_session()
+#     try:
+#         response = session.get(
+#             charts[chart_type]['url'],
+#             headers={'Referer': 'https://www.imdb.com/'},
+#             timeout=10
+#         )
+#         response.raise_for_status()
+        
+#         soup = BeautifulSoup(response.text, 'html.parser')
+#         movie_links = []
+        
+#         # New reliable extraction method
+#         for link in soup.select(charts[chart_type]['selector']):
+#             href = link.find('a')['href'] if link.find('a') else None
+#             if href and '/title/tt' in href:
+#                 full_url = f"https://www.imdb.com{href.split('?')[0]}"
+#                 if full_url not in movie_links:
+#                     movie_links.append(full_url)
+        
+#         return movie_links[:charts[chart_type]['limit']]
+    
+#     except Exception as e:
+#         logger.error(f"Scrape failed: {str(e)}")
+#         return []
 
-def scrape_movie_page(session, url: str) -> Optional[Dict]:
-    """Scrape detailed information for a single movie using requests and BeautifulSoup."""
+def scrape_movie_page(session, url: str, source: str = 'imdb', chart_type: str = None) -> Optional[Dict]:
+    """Scrape detailed movie data with robust error handling.
+    
+    Args:
+        session: The HTTP session to use for requests
+        url: The URL of the movie page to scrape
+        source: The source of the movie (e.g., 'imdb_top_250')
+        chart_type: The type of chart the movie was found in (e.g., 'top_250', 'popular')
+    """
     try:
-        logger.info(f"Scraping movie page: {url}")
+        logger.info(f"Scraping: {url}")
         
-        # Get the page content with retry logic
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = session.get(url, timeout=30)
-                response.raise_for_status()
-                break
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    logger.error(f"Failed to fetch {url} after {max_retries} attempts: {str(e)}")
-                    return None
-                logger.warning(f"Retry {attempt + 1} for {url}")
-                time.sleep(2)
-        
-        if not response.text.strip():
-            logger.warning(f"Empty response received for {url}")
+        # Extract IMDb ID from URL
+        imdb_match = re.search(r'title\/(tt\d+)\/?', url)
+        if not imdb_match:
+            logger.error(f"Invalid IMDB URL: {url}")
             return None
-            
+        imdb_id = imdb_match.group(1)
+        
+        # Make the HTTP request with retries
+        for attempt in range(3):
+            try:
+                response = session.get(url, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Referer': 'https://www.imdb.com/'
+                }, timeout=30)
+                response.raise_for_status()
+                break  # If successful, exit the retry loop
+            except Exception as e:
+                if attempt == 2:  # If this was the last attempt
+                    logger.error(f"Failed to fetch {url} after 3 attempts: {e}")
+                    return None
+                time.sleep(2)  # Wait before retrying
+        
+        # Parse the HTML response
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Helper function to safely extract text from elements
-        def safe_extract(selector: str, attribute: str = 'text', default=None):
+        # Helper function to safely get text from selector
+        def get_text(selector, attr='text', default=None):
             try:
-                element = soup.select_one(selector)
-                if not element:
+                elem = soup.select_one(selector)
+                if not elem:
                     return default
-                if attribute == 'text':
-                    return element.get_text(strip=True)
-                return element.get(attribute, default)
+                if attr == 'text':
+                    return elem.get_text(strip=True)
+                return elem.get(attr, default)
             except Exception as e:
-                logger.debug(f"Error extracting {selector}: {str(e)}")
+                logger.debug(f"Error getting {selector}: {e}")
                 return default
         
-        # Extract basic information
-        title = safe_extract('h1[data-testid="hero-title-block__title"]', 'text', 'Unknown Title')
-        year = safe_extract('a[href*="releaseinfo"]', 'text')
+        # Extract movie data with more robust selectors
+        title = get_text('h1[data-testid="hero__pageTitle"]')
+        if not title:  # Fallback for different page structure
+            title = get_text('h1')
         
-        # Extract rating
-        rating_text = safe_extract('div[data-testid="hero-rating-bar__aggregate-rating__score"] span', 'text')
-        rating = float(rating_text) if rating_text and rating_text.replace('.', '').isdigit() else None
+        year = get_text('a[href*="releaseinfo"]')
+        if not year:  # Try alternative year selector
+            year = get_text('span[data-testid="title-details-releasedate"] a')
         
-        # Extract genres
-        genre_elems = soup.select('div[data-testid="genres"] a')
-        genres = [genre.get_text(strip=True) for genre in genre_elems if genre.get_text(strip=True)]
+        rating = get_text('div[data-testid="hero-rating-bar__aggregate-rating__score"]')
+        if not rating:  # Try alternative rating selector
+            rating = get_text('span.sc-7ab21ed2-1.jGRxWM')
         
-        # Extract plot
-        plot = safe_extract('p[data-testid="plot"]', 'text')
+        plot = get_text('span[data-testid="plot-xl"]')
+        if not plot:  # Fallback to shorter plot
+            plot = get_text('span[data-testid="plot-l"]')
         
-        # Extract director and cast
-        director = safe_extract('a[href*="tt_ov_dr"]', 'text')
-        cast_elems = soup.select('a[data-testid="title-cast-item__actor"]')
-        cast = [actor.get_text(strip=True) for actor in cast_elems[:5] if actor.get_text(strip=True)]
+        # Try multiple genre selectors
+        genres = []
         
-        # Extract poster URL
-        poster_url = safe_extract('img[data-testid="hero-media__poster"]', 'src')
+        # Try new genre selector (IMDB's current format)
+        genre_section = soup.find('div', {'class': 'ipc-chip-list'})
+        if genre_section:
+            genres = [g.get_text(strip=True) for g in genre_section.find_all('a')]
+            if genres:
+                logger.debug(f"Found genres using ipc-chip-list selector: {genres}")
+                
+        # Try genre selector in title block
+        if not genres:
+            title_block = soup.find('div', {'class': 'sc-52d569c6-0'})
+            if title_block:
+                genres = [g.get_text(strip=True) for g in title_block.find_all('a') if '/genres=' in g.get('href', '')]
+                if genres:
+                    logger.debug(f"Found genres using title block selector: {genres}")
+                    
+        # Try genre selector in title details
+        if not genres:
+            title_details = soup.find('div', {'data-testid': 'title-details-section'})
+            if title_details:
+                genres = [g.get_text(strip=True) for g in title_details.find_all('a') if '/genres=' in g.get('href', '')]
+                if genres:
+                    logger.debug(f"Found genres using title details selector: {genres}")
+                    
+        # Try genre selector in title story
+        if not genres:
+            title_story = soup.find('div', {'data-testid': 'storyline-genres'})
+            if title_story:
+                genres = [g.get_text(strip=True) for g in title_story.find_all('a')]
+                if genres:
+                    logger.debug(f"Found genres using storyline selector: {genres}")
+                    
+        # Try genre selector in title info
+        if not genres:
+            title_info = soup.find('div', {'data-testid': 'title-genres'})
+            if title_info:
+                genres = [g.get_text(strip=True) for g in title_info.find_all('a')]
+                if genres:
+                    logger.debug(f"Found genres using title info selector: {genres}")
+                    
+        # Clean up genres
+        genres = [g.lower().strip() for g in genres if g]
+        if not genres:
+            logger.warning(f"No genres found for {title}")
+        else:
+            logger.info(f"Found genres for {title}: {genres}")
         
-        # Extract IMDB ID from URL
-        imdb_id = url.split('/')[-2] if '/title/tt' in url else None
+        director = get_text('a[href*="tt_ov_dr"]')
+        if not director:  # Fallback for director
+            director_elem = soup.find('a', {'data-testid': 'title-pc-principal-credit'})
+            if director_elem:
+                director = director_elem.get_text(strip=True)
         
-        movie_data = {
+        cast = [actor.get_text(strip=True) for actor in soup.select('a[data-testid="title-cast-item__actor"]')]
+        if not cast:  # Fallback for cast
+            cast = [a.get_text(strip=True) for a in soup.select('a[href*="/name/nm"][data-testid="title-cast-item__actor"]')]
+        
+        poster = get_text('img[data-testid="hero-media__poster"]', 'src')
+        if not poster:  # Fallback for poster
+            poster_elem = soup.find('img', {'class': 'ipc-image'})
+            if poster_elem:
+                poster = poster_elem.get('src')
+        
+        data = {
+            'imdb_id': imdb_id,
             'title': title,
             'year': year,
             'rating': rating,
-            'genres': genres,
             'plot': plot,
+            'genres': genres,
             'director': director,
-            'cast': cast,
-            'poster_url': poster_url,
-            'imdb_id': imdb_id,
-            'imdb_url': url,
-            'scraped_at': datetime.utcnow(),
-            'source': 'imdb',
-            'scraped_with': 'requests'
+            'cast': cast[:10],  # Limit to top 10 cast members
+            'poster': poster,
+            'url': url,
+            'source': source,  # e.g., 'imdb_top_250'
+            'chart_type': chart_type,  # e.g., 'top_250', 'popular', 'trending'
+            'last_updated': datetime.utcnow(),
+            'scraped_at': datetime.utcnow()  # For sorting by most recently scraped
         }
         
-        logger.debug(f"Scraped movie data: {movie_data}")
-        return movie_data
+        return {k: v for k, v in data.items() if v}  # Remove None values
         
     except Exception as e:
-        logger.error(f"Error scraping movie page {url}: {str(e)}", exc_info=True)
+        logger.error(f"Error scraping {url}: {str(e)}", exc_info=True)
         return None
 
-def save_movie_data(movie_data: Dict, movies_collection):
-    if not movie_data or not movie_data.get("title"):
-        return
-    
-    # Create a unique ID from the title and year
-    movie_id = f"{movie_data['title'].lower().replace(' ', '-')}-{movie_data['year']}"
-    
-    # Update or insert the movie data
-    movies_collection.update_one(
-        {"_id": movie_id},
-        {"$set": movie_data},
-        upsert=True
-    )
+def scrape_imdb_movies():
+    """Main scraping function with enhanced logging and scheduling."""
+    try:
+        logger.info("Starting IMDB scraping session")
+        
+        _, _, movies_collection = get_mongo_client()
+        session = get_http_session()
+        
+        # Scrape all charts
+        # Define all chart types including genres
+        chart_types = ['top_250', 'popular', 'trending', 'action', 'comedy', 'horror']
+        total_saved = 0
+        total_errors = 0
+        
+        for chart_type in chart_types:
+            try:
+                # For genre-specific charts, use the source as the chart type
+                source = chart_type if chart_type in ['action', 'comedy', 'horror'] else chart_type
+                
+                logger.info(f"Processing {chart_type} chart...")
+                movie_urls = scrape_imdb_chart(chart_type)
+                if not movie_urls:
+                    logger.warning(f"No movies found in {chart_type} chart")
+                    continue
+                
+                saved_count = 0
+                error_count = 0
+                
+                # Process each movie URL
+                for i, url in enumerate(movie_urls, 1):
+                    try:
+                        # Use the source directly for genre-specific charts
+                        source = f'imdb_{chart_type}'
+                        
+                        movie_data = scrape_movie_page(
+                            session=session,
+                            url=url,
+                            source=source,
+                            chart_type=chart_type  # Pass the chart_type to scrape_movie_page
+                        )
+                        if not movie_data:
+                            error_count += 1
+                            continue
+                        
+                        # Update or insert movie
+                        result = movies_collection.update_one(
+                            {'imdb_id': movie_data['imdb_id']},
+                            {'$set': movie_data},
+                            upsert=True
+                        )
+                        
+                        if result.upserted_id:
+                            saved_count += 1
+                        
+                        logger.debug(f"Processed {i}/{len(movie_urls)} from {chart_type}: {movie_data.get('title')}")
+                        
+                        # Be nice to IMDB
+                        time.sleep(1.5)  # Slightly longer delay to avoid rate limiting
+                        
+                    except Exception as e:
+                        error_count += 1
+                        logger.error(f"Error processing {url}: {str(e)}")
+                
+                logger.info(f"{chart_type}: Saved {saved_count}, Errors {error_count}")
+                total_saved += saved_count
+                total_errors += error_count
+                
+            except Exception as e:
+                logger.error(f"Failed to process {chart_type} chart: {str(e)}")
+                continue
+        
+        logger.info(f"Scraping complete. Total saved: {total_saved}, Total errors: {total_errors}")
+        
+    except Exception as e:
+        logger.error(f"Scraping failed: {str(e)}", exc_info=True)
+    finally:
+        if 'session' in locals():
+            session.close()

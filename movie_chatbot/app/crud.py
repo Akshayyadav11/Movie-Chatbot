@@ -46,8 +46,72 @@ def search_movies(query: str, limit: int = 10):
         "score": {"$meta": "textScore"}
     }).sort([("score", {"$meta": "textScore"})]).limit(limit))
 
-def get_latest_movies(limit: int = 10):
-    return list(movies_collection.find().sort("release_date", -1).limit(limit))
+def get_latest_movies(limit: int = 10, genre: str = None):
+    """
+    Get latest movies, optionally filtered by genre.
+    If genre is specified but not found, returns top-rated movies.
+    """
+    try:
+        # First, try to find movies matching the genre if specified
+        if genre:
+            # Try exact match in genres array first
+            genre_query = {
+                "genres": {
+                    "$elemMatch": {
+                        "$regex": f"^{genre}$",
+                        "$options": "i"
+                    }
+                }
+            }
+            
+            # Try to find movies with the specified genre
+            genre_movies = list(movies_collection.find(genre_query)
+                                  .sort("rating", -1)
+                                  .limit(limit))
+            
+            # If we found movies with this genre, return them
+            if genre_movies:
+                return genre_movies
+            
+            # If no movies found with exact genre match, try text search
+            try:
+                text_search_query = {
+                    "$text": {
+                        "$search": f"\"{genre}\""  # Exact phrase match
+                    }
+                }
+                
+                text_movies = list(movies_collection.find(text_search_query)
+                                     .sort("rating", -1)
+                                     .limit(limit))
+                
+                if text_movies:
+                    return text_movies
+            except Exception as e:
+                # If text search fails (e.g., no text index), try regex search on title and plot
+                regex_query = {
+                    "$or": [
+                        {"title": {"$regex": genre, "$options": "i"}},
+                        {"plot": {"$regex": genre, "$options": "i"}}
+                    ]
+                }
+                
+                regex_movies = list(movies_collection.find(regex_query)
+                                      .sort("rating", -1)
+                                      .limit(limit))
+                
+                if regex_movies:
+                    return regex_movies
+        
+        # If no genre specified or no matches found, return top-rated movies
+        return list(movies_collection.find()
+                     .sort([("rating", -1), ("year", -1)])
+                     .limit(limit))
+    except Exception as e:
+        import logging
+        logging.error(f"Error in get_latest_movies: {str(e)}")
+        # Return empty list to prevent crashing, will be handled by the caller
+        return []
 
 def get_upcoming_movies(limit: int = 10):
     today = datetime.now().date()

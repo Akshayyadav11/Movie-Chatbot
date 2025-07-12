@@ -13,10 +13,15 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+# Import config first to set up logging
+from .config import LOGGING_CONFIG
+import logging.config
+
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
+# Import other modules after logging is configured
 from . import models, schemas, crud, auth, utils
 from .database import get_db, init_db, get_mongo_client
 from .scraper import scrape_imdb_movies
@@ -44,17 +49,27 @@ TEMPLATES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "templat
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
-# Schedule background scraping job
-utils.schedule_scraping()
+logger.info("Configuring background tasks...")
 
 @app.on_event("startup")
 async def startup_event():
+    logger.info("Starting application...")
+    
     # Initialize MongoDB
     _, _, movies_collection = get_mongo_client()
     
+    # Schedule the scraper to run at configured intervals
+    utils.schedule_scraping()
+    
     # Initial data scraping if no movies exist
     if movies_collection.count_documents({}) == 0:
-        scrape_imdb_movies()
+        logger.info("No movies found in database. Starting initial data scraping...")
+        try:
+            scrape_imdb_movies()
+        except Exception as e:
+            logger.error(f"Error during initial scraping: {str(e)}", exc_info=True)
+    else:
+        logger.info(f"Found {movies_collection.count_documents({})} movies in database")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
