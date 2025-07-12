@@ -1,7 +1,7 @@
 import logging
 import os
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import List, Generator, Dict, Any, Optional
 from urllib.parse import quote
 
@@ -56,20 +56,27 @@ async def startup_event():
     logger.info("Starting application...")
     
     # Initialize MongoDB
-    _, _, movies_collection = get_mongo_client()
-    
-    # Schedule the scraper to run at configured intervals
-    utils.schedule_scraping()
-    
-    # Initial data scraping if no movies exist
-    if movies_collection.count_documents({}) == 0:
-        logger.info("No movies found in database. Starting initial data scraping...")
-        try:
-            scrape_imdb_movies()
-        except Exception as e:
-            logger.error(f"Error during initial scraping: {str(e)}", exc_info=True)
-    else:
-        logger.info(f"Found {movies_collection.count_documents({})} movies in database")
+    try:
+        _, _, movies_collection = get_mongo_client()
+        if movies_collection is None:
+            logger.error("Failed to initialize MongoDB connection")
+            raise Exception("Failed to initialize MongoDB connection")
+            
+        # Schedule the scraper to run at configured intervals
+        utils.schedule_scraping()
+        
+        # Initial data scraping if no movies exist
+        if movies_collection.count_documents({}) == 0:
+            logger.info("No movies found in database. Starting initial data scraping...")
+            try:
+                scrape_imdb_movies()
+            except Exception as e:
+                logger.error(f"Error during initial scraping: {str(e)}", exc_info=True)
+        else:
+            logger.info(f"Found {movies_collection.count_documents({})} movies in database")
+    except Exception as e:
+        logger.error(f"Error during startup: {str(e)}", exc_info=True)
+        raise
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -282,6 +289,52 @@ async def generate_movie_report(
         raise HTTPException(status_code=404, detail="No movies found matching criteria")
     return report
 
+@app.get("/api/report/download")
+async def download_public_report():
+    try:
+        # Get MongoDB client
+        _, _, movies_collection = get_mongo_client()
+        if movies_collection is None:
+            raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
+            
+        # Get latest movies sorted by year
+        latest_movies = list(movies_collection.find({"year": {"$ne": None}})
+            .sort("year", -1)
+            .limit(20))
+        
+        if not latest_movies:
+            raise HTTPException(status_code=404, detail="No movies found")
+            
+        # Prepare CSV content
+        csv_content = "Title,Year,Rating,Genres\n"
+        for movie in latest_movies:
+            try:
+                title = movie.get('title', '').replace(',', '')
+                year = str(movie.get('year', ''))
+                rating = str(movie.get('rating', ''))
+                genres = '|'.join(movie.get('genres', [])).replace(',', '')
+                csv_content += f"{title},{year},{rating},{genres}\n"
+            except Exception as e:
+                logger.error(f"Error processing movie {movie.get('title', '')}: {str(e)}")
+                continue
+                
+        # Create response
+        headers = {
+            'Content-Disposition': f'attachment; filename=latest_movies_{datetime.now().strftime("%Y%m%d")}.csv'
+        }
+        
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers=headers
+        )
+    except Exception as e:
+        logger.error(f"Error generating public report: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error generating report: {str(e)}"
+        )
+
 @app.get("/api/admin/report/download")
 async def download_report(
     current_user: schemas.User = Depends(auth.get_current_admin_user)
@@ -289,19 +342,15 @@ async def download_report(
     try:
         report_data = crud.generate_movie_report()
         if not report_data or not os.path.exists(report_data["csv_path"]):
-            raise HTTPException(status_code=404, detail="Report not found")
-        
-        # Log the download for audit purposes
-        logger.info(f"Admin {current_user.username} downloaded the movie report")
-        
+            raise HTTPException(status_code=404, detail="No report available")
         return FileResponse(
             report_data["csv_path"],
             media_type="text/csv",
-            filename=f"movie_report_{datetime.now().strftime('%Y%m%d')}.csv"
+            filename=report_data["filename"]
         )
     except Exception as e:
         logger.error(f"Error downloading report: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error generating report")
+        raise HTTPException(status_code=500, detail="Error downloading report")
 
 @app.get("/api/admin/report/plot")
 async def get_report_plot(
