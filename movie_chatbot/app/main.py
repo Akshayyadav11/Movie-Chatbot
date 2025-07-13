@@ -9,7 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Form, status, Resp
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.security import OAuth2PasswordRequestForm
+
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
 # Import other modules after logging is configured
-from . import models, schemas, crud, auth, utils
+from . import models, schemas, crud, utils
 from .database import get_db, init_db, get_mongo_client
 from .scraper import scrape_imdb_movies
 
@@ -47,9 +47,7 @@ app.add_middleware(
 # Initialize database tables
 init_db()
 
-import os
-
-# Get absolute paths
+# Configure static files
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 TEMPLATES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "templates"))
 
@@ -89,111 +87,12 @@ async def startup_event():
 async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/admin", response_class=HTMLResponse)
-async def admin_dashboard(
-    request: Request,
-    current_user: Optional[schemas.User] = Depends(auth.get_current_user)
-):
-    if not current_user:
-        return RedirectResponse(url=f"/login?error={quote('Please login to access the admin panel')}")
-    if not current_user.is_admin:
-        return RedirectResponse(url=f"/login?error={quote('Admin privileges required')}")
-        
-    try:
-        # Get database session
-        db = next(get_db())
-        
-        # Get user statistics
-        total_users = db.query(models.User).count()
-        active_users = db.query(models.User).filter(models.User.is_active == True).count()
-        
-        # Get movie statistics from MongoDB
-        _, _, movies_collection = get_mongo_client()
-        total_movies = movies_collection.count_documents({})
-        latest_movies = list(movies_collection.find().sort("release_date", -1).limit(5))
-        
-        # Get chat statistics (if you have a chat model)
-        # total_chats = db.query(models.Chat).count()
-        
-        return templates.TemplateResponse("admin.html", {
-            "request": request,
-            "current_user": current_user,
-            "total_users": total_users,
-            "active_users": active_users,
-            "total_movies": total_movies,
-            "latest_movies": latest_movies,
-            # "total_chats": total_chats,
-        })
-    except Exception as e:
-        logger.error(f"Error loading admin dashboard: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error loading admin dashboard"
-        )
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = None):
-    # Check for error in query parameters
-    error = request.query_params.get('error', None)
-    
-    # If user is already authenticated, redirect to admin
-    try:
-        current_user = await auth.get_current_user(request=request)
-        if current_user and current_user.is_admin:
-            return RedirectResponse(url="/admin")
-    except Exception as e:
-        # If there's an error (like invalid token), just continue to show login page
-        pass
-        
-    return templates.TemplateResponse("login.html", {
-        "request": request,
-        "error": error
-    })
-
-@app.post("/token", response_model=schemas.Token)
-async def login_for_access_token(
-    response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
-    user = auth.authenticate_user(db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    
-    # Set the access token in an HTTP-only cookie
-    response.set_cookie(
-        key="access_token",
-        value=f"Bearer {access_token}",
-        httponly=True,
-        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax",
-        secure=False  # Set to True in production with HTTPS
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@app.get("/logout")
-async def logout():
-    response = RedirectResponse(url="/login")
-    response.delete_cookie("access_token", httponly=True, samesite="lax")
-    return response
-
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="The message to process")
-
-class PayloadRequest(BaseModel):
-    message: str
+@app.get("/graph")
+async def get_graph_page(request: Request):
+    """
+    Render the movie graph page
+    """
+    return templates.TemplateResponse("movie_graph.html", {"request": request})
 
 @app.post("/api/chat", response_model=schemas.ChatMessage)
 async def chat(request: Dict[str, Any]):
@@ -258,51 +157,6 @@ async def get_latest_movies(limit: int = 5):
 async def get_upcoming_movies(limit: int = 5):
     movies = crud.get_upcoming_movies(limit)
     return movies
-
-# Graph page
-@app.get("/graph")
-async def get_graph_page(request: Request):
-    """
-    Render the movie graph page
-    """
-    return templates.TemplateResponse("movie_graph.html", {"request": request})
-
-# Admin endpoints
-@app.post("/api/admin/users/{user_id}/deactivate")
-async def deactivate_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: schemas.User = Depends(auth.get_current_admin_user)
-):
-    user = crud.update_user_status(db, user_id, False)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "User deactivated"}
-
-@app.post("/api/admin/users/{user_id}/activate")
-async def activate_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: schemas.User = Depends(auth.get_current_admin_user)
-):
-    user = crud.update_user_status(db, user_id, True)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": "User activated"}
-
-@app.post("/api/admin/report")
-async def generate_movie_report(
-    report_request: schemas.ReportRequest,
-    current_user: schemas.User = Depends(auth.get_current_admin_user)
-):
-    report = crud.generate_movie_report(
-        start_date=report_request.start_date,
-        end_date=report_request.end_date,
-        min_rating=report_request.min_rating
-    )
-    if not report:
-        raise HTTPException(status_code=404, detail="No movies found matching criteria")
-    return report
 
 @app.get("/api/movie/graph")
 async def get_movie_graph_data():
@@ -427,51 +281,3 @@ async def download_public_report():
             status_code=500, 
             detail=f"Error generating report: {str(e)}"
         )
-
-@app.get("/api/admin/report/download")
-async def download_report(
-    current_user: schemas.User = Depends(auth.get_current_admin_user)
-):
-    try:
-        report_data = crud.generate_movie_report()
-        if not report_data or not os.path.exists(report_data["csv_path"]):
-            raise HTTPException(status_code=404, detail="No report available")
-        return FileResponse(
-            report_data["csv_path"],
-            media_type="text/csv",
-            filename=report_data["filename"]
-        )
-    except Exception as e:
-        logger.error(f"Error downloading report: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error downloading report")
-
-@app.get("/api/admin/report/plot")
-async def get_report_plot(
-    current_user: schemas.User = Depends(auth.get_current_admin_user)
-):
-    try:
-        report_data = crud.generate_movie_report()
-        if not report_data or not os.path.exists(report_data["plot_path"]):
-            # Return a default image if no plot is available
-            default_plot = "static/default_plot.png"
-            if not os.path.exists(default_plot):
-                # Create a simple default plot if it doesn't exist
-                import matplotlib.pyplot as plt
-                plt.figure(figsize=(10, 6))
-                plt.text(0.5, 0.5, 'No data available', 
-                        horizontalalignment='center',
-                        verticalalignment='center',
-                        transform=plt.gca().transAxes)
-                plt.axis('off')
-                plt.savefig(default_plot)
-                plt.close()
-            return FileResponse(default_plot)
-        
-        # Set cache control headers
-        return FileResponse(
-            report_data["plot_path"],
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"}
-        )
-    except Exception as e:
-        logger.error(f"Error generating plot: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error generating plot")

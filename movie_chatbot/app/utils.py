@@ -278,7 +278,6 @@ def process_chat_message(message: str) -> str:
     return (
         "🤔 I'm not sure I understand. Here's what I can help with:\n\n"
         "• Search for specific movies by title\n"
-        "• Show top rated movies\n"
         "• Find popular/trending movies\n"
         "• Recommend movies by genre\n"
         "• Show latest releases\n\n"

@@ -57,9 +57,6 @@
             <a href="/" class="logo">MovieBot</a>
             <div class="nav-links">
                 <a href="/" class="nav-link">Home</a>
-                {% if current_user and current_user.is_admin %}
-                    <a href="/admin" class="nav-link">Admin</a>
-                {% endif %}
                 <button class="nav-link btn btn-primary" onclick="downloadReport()">
                     <i class="fas fa-download"></i> Download Report
                 </button>
@@ -72,31 +69,14 @@
                     window.location.href = '/graph';
                 }
             </script>
-            {% if current_user %}
-                <a href="#" id="logoutLink" class="nav-link">Logout</a>
-            {% else %}
-                <a href="/login" class="nav-link btn btn-primary">Admin Login</a>
-            {% endif %}
         </div>
     </nav>
     
     <!-- Add this script at the end of the body -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const logoutLink = document.getElementById('logoutLink');
-            if (logoutLink) {
-                logoutLink.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    localStorage.removeItem('access_token');
-                    window.location.href = '/logout';
-                });
-            }
-        });
-    </script>
+
     <main class="container">
         {% block content %}{% endblock %}
     </main>
     <script src="/static/js/script.js"></script>
-    <script src="/static/js/auth.js"></script>
 </body>
 </html>
