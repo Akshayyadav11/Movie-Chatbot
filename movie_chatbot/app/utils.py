@@ -145,7 +145,7 @@ def format_movie_response(movie: Dict[str, Any]) -> str:
         return "\n".join(response)
     except Exception as e:
         logger.error(f"Formatting failed: {str(e)}")
-        return "❌ Couldn't format movie information. Please try another query."
+        return "Couldn't format movie information. Please try another query."
 
 def format_movie_list(movies: List[Dict[str, Any]]) -> str:
     """Format multiple movies in a clean, readable list."""
@@ -159,7 +159,7 @@ def format_movie_list(movies: List[Dict[str, Any]]) -> str:
         rating = movie.get('rating', 'N/A')
         
         formatted_movies.append(
-            f"{i}. {title} ({year}) • {rating} • <a href='{movie.get('url', '')}' target='_blank'>IMDb</a>"
+            f"{i}. {title} ({year}) • {rating} • <a href='{movie.get('url', '')}' target='_blank'>IMDB</a>"
         )
     
     # Add a helpful note if there are more results
@@ -179,20 +179,20 @@ def process_chat_message(message: str) -> str:
             # Start async scraping if empty
             import threading
             threading.Thread(target=scrape_imdb_movies).start()
-            return "⏳ Loading movie database for the first time (this may take 2-3 minutes)..." 
+            return "Loading movie database for the first time (this may take 2-3 minutes)..."
     
     message_lower = message.lower().strip()
     
     # Greetings
     if any(word in message_lower for word in ["hello", "hi", "hey"]):
-        return "🎬 Hello! I'm your movie bot. Ask me about movies, actors, or get recommendations!"
+        return "Hello! I'm your movie bot. Ask me about movies, actors, or get recommendations!"
     
     # Help command
     if any(word in message_lower for word in ["help", "what can you do", "options"]):
         return (
-            "🎥 **How I can help you**:\n\n"
+            "**How I can help you**:\n\n"
             "• **Search movies**: 'Tell me about The Dark Knight'\n"
-            "• **Top 250**: 'Show top movies' or 'IMDb top 250'\n"
+            "• **Top 250**: 'Show top movies' or 'IMDB top 250'\n"
             "• **Popular movies**: 'What's popular?' or 'Trending movies'\n"
             "• **By genre**: 'Horror movies', 'Action movies', 'Comedy films'\n"
             "• **New releases**: 'What's new?' or 'Latest movies'\n\n"
@@ -210,7 +210,7 @@ def process_chat_message(message: str) -> str:
         movies = get_movies_from_chart("top_250", limit=5)
         if not movies:
             return "Couldn't find top movies. The database might be updating. Please try again in a moment."
-        return f"IMDb Top 5 Movies:\n\n" + format_movie_list(movies) + "\n\nAsk for more details about any movie!"
+        return f"IMDB Top 5 Movies:\n\n" + format_movie_list(movies) + "\n\nAsk for more details about any movie!"
     
     if any(term in message_lower for term in ["popular", "trending", "what's hot"]):
         movies = get_movies_from_chart("popular", limit=5)

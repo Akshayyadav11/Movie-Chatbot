@@ -48,7 +48,7 @@ def main():
                 print(f"Year: {movie.get('year', 'N/A')}")
                 print(f"Rating: {movie.get('rating', 'N/A')}")
                 print(f"Genres: {', '.join(movie.get('genres', ['N/A']))}")
-                print(f"IMDb URL: {movie.get('url', 'N/A')}")
+                print(f"IMDB URL: {movie.get('url', 'N/A')}")
         
         # Get movie count by source
         if movie_count > 0:

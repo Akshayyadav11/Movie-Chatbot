@@ -144,46 +144,6 @@ def scrape_imdb_chart(chart_type='top'):
     except Exception as e:
         logger.error(f"Failed to scrape {chart_type} chart: {str(e)}", exc_info=True)
         return []
-# def scrape_imdb_chart(chart_type='top'):
-#     """Working IMDb scraper as of July 2024"""
-#     charts = {
-#         'top': {
-#             'url': 'https://www.imdb.com/chart/top/',
-#             'selector': 'div.ipc-title-link-wrapper',  # Updated selector
-#             'limit': 10
-#         },
-#         'popular': {
-#             'url': 'https://www.imdb.com/chart/moviemeter/',
-#             'selector': 'div.ipc-title-link-wrapper',  # Same selector works for both
-#             'limit': 10
-#         }
-#     }
-    
-#     session = get_http_session()
-#     try:
-#         response = session.get(
-#             charts[chart_type]['url'],
-#             headers={'Referer': 'https://www.imdb.com/'},
-#             timeout=10
-#         )
-#         response.raise_for_status()
-        
-#         soup = BeautifulSoup(response.text, 'html.parser')
-#         movie_links = []
-        
-#         # New reliable extraction method
-#         for link in soup.select(charts[chart_type]['selector']):
-#             href = link.find('a')['href'] if link.find('a') else None
-#             if href and '/title/tt' in href:
-#                 full_url = f"https://www.imdb.com{href.split('?')[0]}"
-#                 if full_url not in movie_links:
-#                     movie_links.append(full_url)
-        
-#         return movie_links[:charts[chart_type]['limit']]
-    
-#     except Exception as e:
-#         logger.error(f"Scrape failed: {str(e)}")
-#         return []
 
 def scrape_movie_page(session, url: str, source: str = 'imdb', chart_type: str = None) -> Optional[Dict]:
     """Scrape detailed movie data with robust error handling.
