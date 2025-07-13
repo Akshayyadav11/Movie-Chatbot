@@ -109,16 +109,8 @@ def scrape_imdb_chart(chart_type='top'):
         )
         response.raise_for_status()
         
-        # Debug: Save HTML for inspection
-        with open(f'imdb_{chart_type}.html', 'w', encoding='utf-8') as f:
-            f.write(response.text)
-            
         soup = BeautifulSoup(response.text, 'html.parser')
         movie_links = []
-        
-        # Save HTML for debugging
-        with open(f'imdb_{chart_type}.html', 'w', encoding='utf-8') as f:
-            f.write(soup.prettify())
         
         # Find all movie containers
         movie_containers = soup.select(chart['selector'])
