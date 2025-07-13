@@ -61,4 +61,12 @@ def get_db() -> Generator[Session, None, None]:
 
 def init_db():
     from .models import Base
+    try:
+        # Try to drop tables first
+        Base.metadata.drop_all(bind=engine)
+    except:
+        # If tables don't exist, ignore the error
+        pass
+    
+    # Create tables
     Base.metadata.create_all(bind=engine)

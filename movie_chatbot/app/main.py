@@ -5,13 +5,15 @@ from datetime import datetime, timedelta
 from typing import List, Generator, Dict, Any, Optional
 from urllib.parse import quote
 
-from fastapi import FastAPI, Depends, HTTPException, Request, Form, status, Response
+from fastapi import FastAPI, Depends, HTTPException, Request, Form, status, Response, Cookie
 from fastapi.responses import RedirectResponse, JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from fastapi.security import OAuth2PasswordRequestForm
+from . import auth, database, models, schemas
 
 # Initialize templates
 templates = Jinja2Templates(directory="app/templates")
@@ -31,18 +33,45 @@ from .scraper import scrape_imdb_movies
 
 app = FastAPI(
     title="Movie Chatbot API",
-    description="API for Movie Chatbot application",
-    version="1.0.0"
+    description="API for Movie Chatbot application with Admin Panel",
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json"
 )
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Token endpoint
+@app.post("/api/token", response_model=schemas.Token)
+async def login_for_access_token(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    user = auth.authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = auth.create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+# Admin login route
+@app.get("/admin/login")
+async def admin_login(request: Request):
+    return templates.TemplateResponse("admin_login.html", {"request": request})
 
 # Initialize database tables
 init_db()
