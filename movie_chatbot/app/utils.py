@@ -12,6 +12,10 @@ from .database import get_mongo_client
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
 
+
+
+
+
 # --- Database Utilities ---
 def is_database_populated() -> bool:
     """Check if movies exist in database."""
@@ -81,16 +85,10 @@ def get_movies_by_genre(genre: str, limit: int = 5) -> List[Dict[str, Any]]:
         # Clean the genre input
         search_genre = genre.lower().strip()
         
-        # First try exact match
+        # Try partial matches using regex
         movies = list(movies_collection.find(
-            {"genres": search_genre}
+            {"genres": {"$regex": f".*{search_genre}.*", "$options": "i"}}
         ).limit(limit))
-        
-        # If no results, try partial matches
-        if not movies:
-            movies = list(movies_collection.find(
-                {"genres": {"$regex": f".*{search_genre}.*", "$options": "i"}}
-            ).limit(limit))
         
         logger.info(f"Genre search for '{genre}' found {len(movies)} movies")
         return movies
@@ -116,21 +114,9 @@ def format_movie_response(movie: Dict[str, Any]) -> str:
         year = movie.get('year', 'N/A')
         rating = movie.get('rating', 'N/A')
         
-        # Format genres with emojis
+        # Format genres
         genres = movie.get('genres', [])
-        genre_emojis = {
-            'action': '💥', 'adventure': '🏝️', 'animation': '🎨', 'comedy': '😂', 
-            'crime': '🔫', 'documentary': '📽️', 'drama': '🎭', 'family': '👨‍👩‍👧‍👦',
-            'fantasy': '🧙', 'history': '📜', 'horror': '👻', 'music': '🎵',
-            'mystery': '🕵️', 'romance': '💘', 'sci-fi': '🚀', 'thriller': '😱',
-            'war': '⚔️', 'western': '🤠'
-        }
-        
-        formatted_genres = []
-        for genre in genres:
-            genre_lower = genre.lower()
-            emoji = genre_emojis.get(genre_lower, '🎬')
-            formatted_genres.append(f"{emoji} {genre}")
+        formatted_genres = [genre.title() for genre in genres]
         
         # Format cast (limit to 3 main actors)
         cast = movie.get('cast', ['N/A'])
@@ -145,16 +131,15 @@ def format_movie_response(movie: Dict[str, Any]) -> str:
         
         # Build the response
         response = [
-            f"🎬 **{title}** ({year}) ⭐ {rating}",
+            f"{title} ({year}) {rating}",
             "",
-            f"📅 **Year**: {year}",
-            f"🌟 **Rating**: {rating}/10",
-            f"🎭 **Genres**: {' • '.join(formatted_genres) if formatted_genres else 'N/A'}",
-            f"🎥 **Director**: {movie.get('director', 'N/A')}",
-            f"👥 **Cast**: {', '.join(main_cast)}",
-            "",
-            f"📖 **Plot**: {short_plot}",
-            f"🔗 [View on IMDb]({movie.get('url', '')})"
+            f"Year: {year}",
+            f"Rating: {rating}/10",
+            f"Genres: {' • '.join(formatted_genres) if formatted_genres else 'N/A'}",
+            f"Director: {movie.get('director', 'N/A')}",
+            f"Cast: {', '.join(main_cast)}",
+            f"Plot: {short_plot}",
+            f"View on IMDB: <a href='{movie.get('url', '')}' target='_blank'>IMDB Page</a>"
         ]
         
         return "\n".join(response)
@@ -165,7 +150,7 @@ def format_movie_response(movie: Dict[str, Any]) -> str:
 def format_movie_list(movies: List[Dict[str, Any]]) -> str:
     """Format multiple movies in a clean, readable list."""
     if not movies:
-        return "❌ No movies found. Please try another search."
+        return "No movies found. Please try another search."
     
     formatted_movies = []
     for i, movie in enumerate(movies[:5], 1):  # Limit to top 5 for readability
@@ -173,27 +158,16 @@ def format_movie_list(movies: List[Dict[str, Any]]) -> str:
         year = movie.get('year', 'N/A')
         rating = movie.get('rating', 'N/A')
         
-        # Get first genre for the emoji
-        genre_emoji = '🎬'  # Default movie emoji
-        if 'genres' in movie and movie['genres']:
-            first_genre = movie['genres'][0].lower()
-            genre_emojis = {
-                'action': '💥', 'adventure': '🏝️', 'animation': '🎨', 
-                'comedy': '😂', 'crime': '🔫', 'documentary': '📽️', 
-                'drama': '🎭', 'family': '👨‍👩‍👧‍👦', 'fantasy': '🧙', 
-                'horror': '👻', 'romance': '💘', 'sci-fi': '🚀', 'thriller': '😱'
-            }
-            genre_emoji = genre_emojis.get(first_genre, '🎬')
-        
         formatted_movies.append(
-            f"{i}. {genre_emoji} **{title}** ({year}) • ⭐ {rating}"
+            f"{i}. {title} ({year}) • {rating} • <a href='{movie.get('url', '')}' target='_blank'>IMDb</a>"
         )
     
     # Add a helpful note if there are more results
     if len(movies) > 5:
-        formatted_movies.append("\n💡 Showing top 5 results. Try being more specific for better results!")
+        formatted_movies.append("\nShowing top 5 results. Try being more specific for better results!")
     
-    return "\n".join(formatted_movies)
+    # Join with newlines and add extra spacing between movies
+    return "\n\n".join(formatted_movies)
 
 # --- Chat Processing ---
 def process_chat_message(message: str) -> str:
@@ -235,28 +209,28 @@ def process_chat_message(message: str) -> str:
     if any(term in message_lower for term in ["top 250", "top movies", "best movies"]):
         movies = get_movies_from_chart("top_250", limit=5)
         if not movies:
-            return "🔍 Couldn't find top movies. The database might be updating. Please try again in a moment."
-        return "🏆 **IMDb Top 5 Movies**:\n" + format_movie_list(movies) + "\n\n💡 Ask for more details about any movie!"
+            return "Couldn't find top movies. The database might be updating. Please try again in a moment."
+        return f"IMDb Top 5 Movies:\n\n" + format_movie_list(movies) + "\n\nAsk for more details about any movie!"
     
     if any(term in message_lower for term in ["popular", "trending", "what's hot"]):
         movies = get_movies_from_chart("popular", limit=5)
         if not movies:
             movies = get_movies_from_chart("trending", limit=5)
         if not movies:
-            return "🔍 Couldn't find popular movies. The database might be updating. Please try again in a moment."
-        return "🔥 **Popular Movies Right Now**:\n" + format_movie_list(movies)
+            return "Couldn't find popular movies. The database might be updating. Please try again in a moment."
+        return f"Popular Movies Right Now:\n\n" + format_movie_list(movies)
     
     # Genre queries
     genre_map = {
         "horror": ["horror", "scary", "frightening", "terrifying"],
-        "action": ["action", "adventure", "fight", "battle", "explosion"],
+        "action": ["action", "fight", "battle", "explosion"],
+        "adventure": ["adventure", "expedition", "journey", "quest"],
         "comedy": ["comedy", "funny", "humor", "hilarious"],
         "drama": ["drama", "emotional", "serious"],
         "sci-fi": ["sci-fi", "science fiction", "space", "future", "alien"],
         "romance": ["romance", "romantic", "love story", "rom com"],
         "thriller": ["thriller", "suspense", "mystery", "crime"],
         "animation": ["animation", "animated", "cartoon"],
-        "documentary": ["documentary", "docu", "real life"],
         "fantasy": ["fantasy", "magic", "sword", "dragon"]
     }
     
@@ -264,19 +238,19 @@ def process_chat_message(message: str) -> str:
         if any(kw in message_lower for kw in keywords):
             movies = get_movies_by_genre(genre, limit=5)
             if not movies:
-                return f"🔍 Couldn't find any {genre} movies. Try another genre or check back later."
-            return f"🎭 **Top {genre.capitalize()} Movies**:\n" + format_movie_list(movies)
+                return f"Couldn't find any {genre} movies. Try another genre or check back later."
+            return f"Top {genre.capitalize()} Movies:\n\n" + format_movie_list(movies)
     
     # Latest movies
     if any(word in message_lower for word in ["new", "latest", "recent", "just added"]):
         movies = get_latest_movies(limit=5)
         if not movies:
-            return "🔍 Couldn't find recent movies. The database might be updating. Please try again in a moment."
-        return "🆕 **Recently Added Movies**:\n" + format_movie_list(movies)
+            return "Couldn't find recent movies. The database might be updating. Please try again in a moment."
+        return f"Recently Added Movies:\n\n" + format_movie_list(movies)
     
     # If we got here, we didn't understand the query
     return (
-        "🤔 I'm not sure I understand. Here's what I can help with:\n\n"
+        "I'm not sure I understand. Here's what I can help with:\n\n"
         "• Search for specific movies by title\n"
         "• Find popular/trending movies\n"
         "• Recommend movies by genre\n"

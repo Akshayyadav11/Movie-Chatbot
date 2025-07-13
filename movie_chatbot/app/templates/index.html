@@ -31,7 +31,7 @@
         function addMessage(message, isUser) {
             const messageDiv = document.createElement('div');
             messageDiv.className = isUser ? 'message user-message' : 'message bot-message';
-            messageDiv.textContent = message;
+            messageDiv.innerHTML = message.replace(/\n/g, '<br>');
             chatBox.appendChild(messageDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
@@ -72,7 +72,7 @@
         function addMessage(message, isUser) {
             const messageDiv = document.createElement('div');
             messageDiv.className = isUser ? 'message user-message' : 'message bot-message';
-            messageDiv.textContent = message;
+            messageDiv.innerHTML = message.replace(/\n/g, '<br>');
             chatBox.appendChild(messageDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
