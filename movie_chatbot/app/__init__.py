@@ -10,10 +10,13 @@ logging.config.dictConfig(LOGGING_CONFIG)
 # Import key modules to make them available when importing the package
 from .database import get_mongo_client
 from .scraper import scrape_imdb_movies
-from .utils import schedule_scraping
+from .scheduler import start_scheduler, init_scheduler, shutdown_scheduler, run_scheduler
 
 __all__ = [
     'get_mongo_client',
     'scrape_imdb_movies',
-    'schedule_scraping',
+    'start_scheduler',
+    'init_scheduler',
+    'shutdown_scheduler',
+    'run_scheduler',
 ]

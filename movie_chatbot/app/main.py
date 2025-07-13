@@ -67,18 +67,22 @@ async def startup_event():
             logger.error("Failed to initialize MongoDB connection")
             raise Exception("Failed to initialize MongoDB connection")
             
-        # Schedule the scraper to run at configured intervals
-        utils.schedule_scraping()
+        # Initialize and start the scheduler (will run at 3 AM daily)
+        from .scheduler import start_scheduler
+        start_scheduler()
         
-        # Initial data scraping if no movies exist
-        if movies_collection.count_documents({}) == 0:
-            logger.info("No movies found in database. Starting initial data scraping...")
-            try:
-                scrape_imdb_movies()
-            except Exception as e:
-                logger.error(f"Error during initial scraping: {str(e)}", exc_info=True)
-        else:
-            logger.info(f"Found {movies_collection.count_documents({})} movies in database")
+        # Log when the next run will be
+        from apscheduler.job import Job
+        jobs = start_scheduler().get_jobs()
+        if jobs:
+            next_run = jobs[0].next_run_time
+            logger.info(f"Next scheduled scrape at: {next_run}")
+        
+        # Log database status
+        movie_count = movies_collection.count_documents({})
+        logger.info(f"Found {movie_count} movies in database")
+        if movie_count == 0:
+            logger.info("No movies found in database. First scheduled scrape will run at 3 AM.")
     except Exception as e:
         logger.error(f"Error during startup: {str(e)}", exc_info=True)
         raise

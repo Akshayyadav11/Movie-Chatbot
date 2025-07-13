@@ -1,6 +1,7 @@
 import time
 import logging
 import atexit
+import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from .scraper import scrape_imdb_movies
 from .config import LOGGING_CONFIG
@@ -8,11 +9,16 @@ from .config import LOGGING_CONFIG
 # Configure logging
 logging.config.dictConfig(LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
-logger = logging.getLogger(__name__)
 
-def run_scheduler():
-    """Configure and start the scheduler."""
-    # Create the scheduler
+# Global scheduler instance
+scheduler = None
+
+def init_scheduler():
+    """Initialize and return the scheduler with jobs."""
+    global scheduler
+    if scheduler and scheduler.running:
+        return scheduler
+        
     scheduler = BackgroundScheduler()
     
     # Add the job to run daily at 3 AM
@@ -26,25 +32,39 @@ def run_scheduler():
     )
     
     # Handle shutdown
-    atexit.register(lambda: scheduler.shutdown())
+    atexit.register(shutdown_scheduler)
     
-    try:
-        # Start the scheduler
+    return scheduler
+
+def start_scheduler():
+    """Start the scheduler in a separate thread."""
+    global scheduler
+    scheduler = init_scheduler()
+    
+    if not scheduler.running:
         scheduler.start()
-        logger.info("Scheduler started. Press Ctrl+C to exit.")
-        
+        logger.info("Scheduler started successfully.")
+    
+    return scheduler
+
+def shutdown_scheduler():
+    """Shut down the scheduler."""
+    global scheduler
+    if scheduler and scheduler.running:
+        scheduler.shutdown()
+        logger.info("Scheduler shut down successfully.")
+
+def run_scheduler():
+    """Run the scheduler in the main thread (for testing)."""
+    scheduler = start_scheduler()
+    try:
         # Keep the main thread alive
         while True:
             time.sleep(1)
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Shutting down scheduler...")
-        scheduler.shutdown()
-        logger.info("Scheduler shut down successfully.")
+        shutdown_scheduler()
 
 if __name__ == "__main__":
-    # Run the scraper immediately when started
-    logger.info("Running initial scrape...")
-    scrape_imdb_movies()
-    
-    # Then start the scheduler
+    # Start the scheduler without initial run
+    logger.info("Starting scheduler...")
     run_scheduler()

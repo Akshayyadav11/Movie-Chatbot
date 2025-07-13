@@ -259,34 +259,4 @@ def process_chat_message(message: str) -> str:
     )
 
 # --- Scraper Scheduling ---
-def schedule_scraping():
-    """Schedule the IMDB scraper to run at intervals."""
-    try:
-        scheduler = BackgroundScheduler()
-        
-        # Immediate first run
-        scheduler.add_job(
-            func=scrape_imdb_movies,
-            trigger='date',
-            next_run_time=datetime.now(),
-            id='imdb_scraper_initial_run'
-        )
-        
-        # Periodic runs
-        scheduler.add_job(
-            func=scrape_imdb_movies,
-            trigger='interval',
-            minutes=SCRAPER_INTERVAL_MINUTES,
-            id='imdb_scraper_interval'
-        )
-        
-        scheduler.start()
-        atexit.register(lambda: scheduler.shutdown())
-        logger.info(f"Scheduled IMDB scraper to run every {SCRAPER_INTERVAL_MINUTES} minutes")
-        
-        # Log initial database status
-        _, _, movies_collection = get_mongo_client()
-        count = movies_collection.count_documents({})
-        logger.info(f"Initial database contains {count} movies")
-    except Exception as e:
-        logger.error(f"Failed to schedule scraping: {str(e)}")
+# Moved to scheduler.py to run daily at 3 AM
