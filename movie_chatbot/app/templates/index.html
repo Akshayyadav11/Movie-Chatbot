@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="chat-container">
-    <h1>Movie Chatbot</h1>
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="chat-container">
+                <h1>Movie Chatbot</h1>
     <div class="chat-box" id="chatBox">
         <!-- Messages will appear here -->
         <div class="message bot-message">
@@ -13,9 +16,67 @@
         <input type="text" id="userInput" placeholder="Ask me about movies...">
         <button id="sendButton">Send</button>
     </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Movie Releases</h5>
+                    <button class="btn btn-primary" onclick="navigateToGraph()">
+                        View Release Graph
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
+    function navigateToGraph() {
+        window.location.href = '/graph';
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const chatBox = document.getElementById('chatBox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        
+        function addMessage(message, isUser) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isUser ? 'message user-message' : 'message bot-message';
+            messageDiv.textContent = message;
+            chatBox.appendChild(messageDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (message) {
+                addMessage(message, true);
+                userInput.value = '';
+                
+                try {
+                    const response = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ message })
+                    });
+                    const data = await response.json();
+                    addMessage(data.message, false);
+                } catch (error) {
+                    addMessage("Sorry, I'm having trouble connecting. Please try again later.", false);
+                }
+            }
+        }
+        
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
     document.addEventListener('DOMContentLoaded', function() {
         const chatBox = document.getElementById('chatBox');
         const userInput = document.getElementById('userInput');
@@ -58,5 +119,6 @@
             }
         });
     });
+});
 </script>
 {% endblock %}

@@ -3,10 +3,11 @@ import logging
 import atexit
 from apscheduler.schedulers.background import BackgroundScheduler
 from .scraper import scrape_imdb_movies
-from .config import LOG_LEVEL, LOG_FORMAT
+from .config import LOGGING_CONFIG
 
 # Configure logging
-logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
+logging.config.dictConfig(LOGGING_CONFIG)
+logger = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 def run_scheduler():

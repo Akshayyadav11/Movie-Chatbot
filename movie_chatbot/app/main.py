@@ -13,6 +13,9 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+# Initialize templates
+templates = Jinja2Templates(directory="app/templates")
+
 # Import config first to set up logging
 from .config import LOGGING_CONFIG
 import logging.config
@@ -26,7 +29,11 @@ from . import models, schemas, crud, auth, utils
 from .database import get_db, init_db, get_mongo_client
 from .scraper import scrape_imdb_movies
 
-app = FastAPI()
+app = FastAPI(
+    title="Movie Chatbot API",
+    description="API for Movie Chatbot application",
+    version="1.0.0"
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -252,6 +259,14 @@ async def get_upcoming_movies(limit: int = 5):
     movies = crud.get_upcoming_movies(limit)
     return movies
 
+# Graph page
+@app.get("/graph")
+async def get_graph_page(request: Request):
+    """
+    Render the movie graph page
+    """
+    return templates.TemplateResponse("movie_graph.html", {"request": request})
+
 # Admin endpoints
 @app.post("/api/admin/users/{user_id}/deactivate")
 async def deactivate_user(
@@ -288,6 +303,84 @@ async def generate_movie_report(
     if not report:
         raise HTTPException(status_code=404, detail="No movies found matching criteria")
     return report
+
+@app.get("/api/movie/graph")
+async def get_movie_graph_data():
+    """
+    Get movie data for the graph page
+    Returns movie release counts per year for current and next year
+    """
+    try:
+        # Get MongoDB client
+        _, _, movies_collection = get_mongo_client()
+        if movies_collection is None:
+            raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
+            
+        # Get current year and next year
+        current_year = datetime.now().year
+        next_year = current_year + 1
+        
+        # Query movies for current and next year
+        movies = list(movies_collection.find({
+            "year": {"$exists": True},
+            "$or": [
+                {"year": {"$regex": f"{current_year}"}},
+                {"year": {"$regex": f"{next_year}"}}
+            ]
+        }).sort("year", 1))
+        
+        if not movies:
+            return {
+                "labels": [],
+                "data": [],
+                "movies": []
+            }
+        
+        # Prepare data for chart
+        chart_data = {
+            "labels": [],
+            "data": [],
+            "movies": []
+        }
+        
+        # Group movies by year
+        year_movies = {}
+        for movie in movies:
+            try:
+                year = movie.get('year', '')
+                title = movie.get('title', '')
+                genres = movie.get('genres', [])
+                
+                if year not in year_movies:
+                    year_movies[year] = []
+                
+                # Store the original year for display
+                year_movies[year].append({
+                    "title": title,
+                    "year": year,  # Store original year
+                    "genres": genres
+                })
+            except Exception as e:
+                logger.error(f"Error processing movie {title}: {str(e)}")
+                continue
+        
+        # Prepare chart data
+        for year in sorted(year_movies.keys()):
+            try:
+                # Count movies for this year
+                movie_count = len(year_movies[year])
+                
+                chart_data["labels"].append(year)
+                chart_data["data"].append(movie_count)
+                chart_data["movies"].extend(year_movies[year])
+            except Exception as e:
+                logger.error(f"Error processing year {year}: {str(e)}")
+                continue
+        
+        return chart_data
+    except Exception as e:
+        logger.error(f"Error in get_movie_graph_data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/report/download")
 async def download_public_report():

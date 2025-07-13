@@ -310,6 +310,20 @@ def scrape_movie_page(session, url: str, source: str = 'imdb', chart_type: str =
         else:
             logger.info(f"Found genres for {title}: {genres}")
         
+        # Get release date
+        release_date = None
+        release_info = soup.find('li', {'data-testid': 'title-details-releasedate'})
+        if release_info:
+            date_text = release_info.find('a').get_text(strip=True)
+            try:
+                # Try to parse date in format "Month DD, YYYY"
+                date_obj = datetime.strptime(date_text, '%B %d, %Y')
+                release_date = date_obj.strftime('%Y-%m-%d')
+                # Store only the year
+                movie['year'] = str(date_obj.year)
+            except ValueError:
+                logger.warning(f"Could not parse release date for {title}: {date_text}")
+        
         director = get_text('a[href*="tt_ov_dr"]')
         if not director:  # Fallback for director
             director_elem = soup.find('a', {'data-testid': 'title-pc-principal-credit'})
@@ -340,7 +354,8 @@ def scrape_movie_page(session, url: str, source: str = 'imdb', chart_type: str =
             'source': source,  # e.g., 'imdb_top_250'
             'chart_type': chart_type,  # e.g., 'top_250', 'popular', 'trending'
             'last_updated': datetime.utcnow(),
-            'scraped_at': datetime.utcnow()  # For sorting by most recently scraped
+            'scraped_at': datetime.utcnow(),
+            'release_date': release_date
         }
         
         return {k: v for k, v in data.items() if v}  # Remove None values
