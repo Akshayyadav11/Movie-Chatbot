@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 from . import models, schemas, crud, utils
 from .database import get_db, init_db, get_mongo_client
 from .scraper import scrape_imdb_movies
+from .scrapers.upcoming_movies_scraper import UpcomingMoviesScraper
+from .routes.upcoming_movies import router as upcoming_movies_router
 
 app = FastAPI(
     title="Movie Chatbot API",
@@ -73,15 +75,58 @@ async def login_for_access_token(
 async def admin_login(request: Request):
     return templates.TemplateResponse("admin_login.html", {"request": request})
 
-# Initialize database tables
-init_db()
+# Include routers
+# Include routers
+app.include_router(upcoming_movies_router, tags=["upcoming_movies"])
 
-# Configure static files
+# Configure static files and templates
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
 TEMPLATES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "templates"))
 
+# Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Configure templates
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+# Initialize database tables
+init_db()
+
+# Create admin user if it doesn't exist
+@app.on_event("startup")
+async def create_admin_user():
+    from .database import SessionLocal
+    from .models import User
+    from .auth import get_password_hash
+    
+    db = SessionLocal()
+    try:
+        admin_username = "admin@example.com"
+        admin_password = "admin123"
+        
+        # Check if admin user exists
+        existing_user = db.query(User).filter(User.username == admin_username).first()
+        
+        if not existing_user:
+            # Create new admin user
+            hashed_password = get_password_hash(admin_password)
+            admin_user = User(
+                username=admin_username,
+                email=admin_username,
+                hashed_password=hashed_password,
+                is_admin=True,
+                is_active=True
+            )
+            db.add(admin_user)
+            db.commit()
+            logger.info(f"Created new admin user: {admin_username}")
+        else:
+            logger.info(f"Admin user {admin_username} already exists")
+            
+    except Exception as e:
+        logger.error(f"Error creating admin user: {str(e)}")
+    finally:
+        db.close()
 
 logger.info("Configuring background tasks...")
 

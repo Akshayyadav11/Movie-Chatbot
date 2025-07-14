@@ -64,6 +64,9 @@
                     <button class="nav-link btn btn-primary" onclick="navigateToGraph()">
                         <i class="fas fa-chart-bar"></i> Movie Graph
                     </button>
+                    <button class="nav-link btn btn-primary" onclick="navigateUpcomingMovies()">
+                        <i class="fas fa-calendar-alt"></i> Upcoming Movies
+                    </button>
                     <button class="nav-link btn btn-primary" onclick="logout()">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
@@ -77,26 +80,80 @@
         </div>
     </nav>
     <script>
-        // Check for token and show/hide admin features
-        function checkAdminStatus() {
-            const token = localStorage.getItem('token');
-            const adminFeatures = document.getElementById('adminFeatures');
-            const loginButton = document.getElementById('loginButton');
-            
-            if (token) {
-                adminFeatures.style.display = 'block';
-                loginButton.style.display = 'none';
-            } else {
-                adminFeatures.style.display = 'none';
-                loginButton.style.display = 'block';
+            // Check for token and show/hide admin features
+            function checkAdminStatus() {
+                const token = localStorage.getItem('token');
+                const adminFeatures = document.getElementById('adminFeatures');
+                const loginButton = document.getElementById('loginButton');
+                
+                if (token) {
+                    adminFeatures.style.display = 'block';
+                    loginButton.style.display = 'none';
+                } else {
+                    adminFeatures.style.display = 'none';
+                    loginButton.style.display = 'block';
+                }
             }
-        }
 
-        // Check admin status on page load
-        checkAdminStatus();
+            // Navigate to upcoming movies
+            async function navigateUpcomingMovies() {
+                try {
+                    // First try to fetch movies without force scrape
+                    const response = await fetch('/api/upcoming-movies');
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to fetch upcoming movies');
+                    }
+                    
+                    const movies = await response.json();
+                    
+                    // If no movies found, try force scraping
+                    if (movies.length === 0) {
+                        const scrapeResponse = await fetch('/api/upcoming-movies?force_scrape=true');
+                        if (!scrapeResponse.ok) {
+                            throw new Error('Failed to scrape movies');
+                        }
+                        
+                        // Fetch movies again after successful scrape
+                        const freshMovies = await scrapeResponse.json();
+                        if (freshMovies.length === 0) {
+                            throw new Error('No movies found even after scraping');
+                        }
+                        movies = freshMovies;
+                    }
+                    
+                    // Show movies in a modal
+                    const modal = document.createElement('div');
+                    modal.className = 'modal';
+                    modal.innerHTML = `
+                        <div class="modal-content">
+                            <h2>Upcoming Movies (${movies.length} movies)</h2>
+                            <div class="movies-grid">
+                                ${movies.map(movie => `
+                                    <div class="movie-card">
+                                        <h3>${movie.title}</h3>
+                                        
+                                        <a href="${movie.url}" target="_blank">View on IMDb</a>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <button onclick="this.parentElement.parentElement.remove()">Close</button>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error accessing upcoming movies: ' + error.message);
+                }
+            }
 
-        // Check admin status on token change
-        window.addEventListener('storage', checkAdminStatus);
+            // Check admin status on page load
+            checkAdminStatus();
+
+            // Check admin status on token change
+            window.addEventListener('storage', checkAdminStatus);
 
         function navigateToGraph() {
             window.location.href = '/graph';

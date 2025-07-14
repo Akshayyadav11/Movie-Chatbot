@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1>Upcoming Movies</h1>
+    
+    <div class="actions mb-4">
+        <button id="scrapeButton" class="btn btn-primary">
+            <i class="fas fa-sync-alt"></i> Scrape New Movies
+        </button>
+    </div>
+
+    <div id="moviesContainer">
+        {% for date, movies in movies_by_date.items() %}
+        <div class="date-group mb-6">
+            <h2 class="text-xl font-bold mb-4">{{ date }}</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for movie in movies %}
+                <div class="movie-card">
+                    <div class="card p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <h3 class="text-lg font-semibold mb-2">{{ movie.title }}</h3>
+                        <!-- <p class="text-gray-600 mb-3">{{ movie.release_date }}</p> -->
+                        <a href="{{ movie.url }}" target="_blank" class="btn btn-secondary">
+                            <i class="fas fa-external-link-alt"></i> View on IMDb
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+        document.getElementById('scrapeButton').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/upcoming-movies/scrape', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    alert('Successfully scraped new movies!');
+                    window.location.reload();
+                } else {
+                    const error = await response.json();
+                    alert(`Error: ${error.detail}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error scraping movies. Please try again.');
+            }
+        });
+    </script>
+</div>
+{% endblock %}
