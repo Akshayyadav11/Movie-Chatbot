@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h1 class="text-center mb-4">Upcoming Movies Distribution</h1>
+    
+    <!-- Debug Information -->
+    <div class="alert alert-info mb-4">
+        <h4>Debug Information:</h4>
+        <p>Total Movies: {{ debug_info.total_movies }}</p>
+        <p>Movies with Dates: {{ debug_info.movies_with_dates }}</p>
+        <p>Movies by Date: {{ debug_info.movies_by_date|tojson }}</p>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
+            <div id="movies-chart" class="chart-container" style="min-height: 500px;"></div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="table-responsive">
+                <table class="table table-striped" id="movies-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Number of Movies</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+    // Wait for Plotly to be loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Get data directly from template context
+        const data = {{ movies_by_date|tojson }};
+        console.log('Template data:', data);
+        
+        // Process data for chart
+        const dates = data.dates;
+        const counts = data.counts;
+        console.log('Dates:', dates);
+        console.log('Counts:', counts);
+        
+        if (dates.length === 0) {
+            document.getElementById('movies-chart').innerHTML = '<div class="text-center">No upcoming movies found</div>';
+            return;
+        }
+        
+        // Create chart
+        const trace = {
+            x: dates,
+            y: counts,
+            type: 'bar',
+            marker: {
+                color: 'rgba(54, 162, 235, 0.8)',
+                line: {
+                    color: 'rgba(54, 162, 235, 1)',
+                    width: 1
+                }
+            },
+            hovertemplate: 'Date: %{x}<br>Movies: %{y}'
+        };
+        
+        const layout = {
+            title: {
+                text: 'Upcoming Movies by Release Date',
+                font: {
+                    size: 24
+                }
+            },
+            xaxis: {
+                title: 'Release Date',
+                tickangle: -45,
+                tickfont: {
+                    size: 12
+                },
+                automargin: true
+            },
+            yaxis: {
+                title: 'Number of Movies',
+                tickfont: {
+                    size: 12
+                }
+            },
+            margin: {
+                l: 60,
+                r: 20,
+                b: 120,
+                t: 100,
+                pad: 4
+            },
+            showlegend: false,
+            hovermode: 'closest',
+            plot_bgcolor: 'rgba(255,255,255,0.9)',
+            paper_bgcolor: 'rgba(255,255,255,0.9)',
+            barmode: 'stack'
+        };
+        
+        console.log('Creating plot with data:', {dates, counts});
+        
+        // Check if Plotly is loaded
+        if (typeof Plotly !== 'undefined') {
+            Plotly.newPlot('movies-chart', [trace], layout);
+            
+            // Update table
+            const tbody = document.querySelector('#movies-table tbody');
+            tbody.innerHTML = dates.map((date, index) => `
+                <tr>
+                    <td>${date}</td>
+                    <td>${counts[index]}</td>
+                </tr>
+            `).join('');
+        } else {
+            console.error('Plotly.js failed to load');
+            document.getElementById('movies-chart').innerHTML = '<div class="text-center">Failed to load visualization library</div>';
+        }
+    });
+</script>
+{% endblock %}

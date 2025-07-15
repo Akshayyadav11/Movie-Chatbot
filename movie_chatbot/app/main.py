@@ -31,7 +31,7 @@ from . import models, schemas, crud, utils
 from .database import get_db, init_db, get_mongo_client
 from .scraper import scrape_imdb_movies
 from .scrapers.upcoming_movies_scraper import UpcomingMoviesScraper
-from .routes.upcoming_movies import router as upcoming_movies_router
+from .api.upcoming_movies import router as upcoming_movies_router
 
 app = FastAPI(
     title="Movie Chatbot API",
@@ -50,6 +50,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Root route
+@app.get("/")
+async def root(request: Request):
+    return templates.TemplateResponse("base.html", {"request": request})
 
 # Token endpoint
 @app.post("/api/token", response_model=schemas.Token)

@@ -98,51 +98,8 @@
             // Navigate to upcoming movies
             async function navigateUpcomingMovies() {
                 try {
-                    // First try to fetch movies without force scrape
-                    const response = await fetch('/api/upcoming-movies');
-                    
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.detail || 'Failed to fetch upcoming movies');
-                    }
-                    
-                    const movies = await response.json();
-                    
-                    // If no movies found, try force scraping
-                    if (movies.length === 0) {
-                        const scrapeResponse = await fetch('/api/upcoming-movies?force_scrape=true');
-                        if (!scrapeResponse.ok) {
-                            throw new Error('Failed to scrape movies');
-                        }
-                        
-                        // Fetch movies again after successful scrape
-                        const freshMovies = await scrapeResponse.json();
-                        if (freshMovies.length === 0) {
-                            throw new Error('No movies found even after scraping');
-                        }
-                        movies = freshMovies;
-                    }
-                    
-                    // Show movies in a modal
-                    const modal = document.createElement('div');
-                    modal.className = 'modal';
-                    modal.innerHTML = `
-                        <div class="modal-content">
-                            <h2>Upcoming Movies (${movies.length} movies)</h2>
-                            <div class="movies-grid">
-                                ${movies.map(movie => `
-                                    <div class="movie-card">
-                                        <h3>${movie.title}</h3>
-                                        
-                                        <a href="${movie.url}" target="_blank">View on IMDb</a>
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <button onclick="this.parentElement.parentElement.remove()">Close</button>
-                        </div>
-                    `;
-                    document.body.appendChild(modal);
-                    
+                    // Navigate to the movies page
+                    window.location.href = '/upcoming-movies';
                 } catch (error) {
                     console.error('Error:', error);
                     alert('Error accessing upcoming movies: ' + error.message);
