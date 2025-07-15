@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <meta name="description" content="Movie Chatbot - Admin Dashboard">
+    <meta name="theme-color" content="#4361ee">
+    <title>{% block title %}Movie Chatbot{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="{{ url_for('static', path='/favicon.ico') }}" type="image/x-icon">
+    
+    <!-- CSS -->
+    <link href="{{ url_for('static', path='/css/style.css') }}" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+          integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<script>
+    async function downloadReport() {
+        try {
+            const response = await fetch('/api/report/download', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/csv'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `latest_releases_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error downloading report. Please try again.');
+        }
+    }
+</script>
+    <nav class="main-nav">
+        <div class="container">
+            <a href="/" class="logo">MovieBot</a>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Home</a>
+                <div id="adminFeatures" style="display: none;">
+                    <button class="nav-link btn btn-primary" onclick="downloadReport()">
+                        <i class="fas fa-download"></i> Download Report
+                    </button>
+                    <button class="nav-link btn btn-primary" onclick="navigateToGraph()">
+                        <i class="fas fa-chart-bar"></i> Movie Graph
+                    </button>
+                    <button class="nav-link btn btn-primary" onclick="navigateUpcomingMovies()">
+                        <i class="fas fa-calendar-alt"></i> Upcoming Movies
+                    </button>
+                    <button class="nav-link btn btn-primary" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+                <div id="loginButton" style="display: block;">
+                    <a href="/admin/login" class="nav-link btn btn-primary">
+                        <i class="fas fa-user-shield"></i> Admin Login
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <script>
+            // Check for token and show/hide admin features
+            function checkAdminStatus() {
+                const token = localStorage.getItem('token');
+                const adminFeatures = document.getElementById('adminFeatures');
+                const loginButton = document.getElementById('loginButton');
+                
+                if (token) {
+                    adminFeatures.style.display = 'block';
+                    loginButton.style.display = 'none';
+                } else {
+                    adminFeatures.style.display = 'none';
+                    loginButton.style.display = 'block';
+                }
+            }
+
+            // Navigate to upcoming movies
+            async function navigateUpcomingMovies() {
+                try {
+                    // First try to fetch movies without force scrape
+                    const response = await fetch('/api/upcoming-movies');
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'Failed to fetch upcoming movies');
+                    }
+                    
+                    const movies = await response.json();
+                    
+                    // If no movies found, try force scraping
+                    if (movies.length === 0) {
+                        const scrapeResponse = await fetch('/api/upcoming-movies?force_scrape=true');
+                        if (!scrapeResponse.ok) {
+                            throw new Error('Failed to scrape movies');
+                        }
+                        
+                        // Fetch movies again after successful scrape
+                        const freshMovies = await scrapeResponse.json();
+                        if (freshMovies.length === 0) {
+                            throw new Error('No movies found even after scraping');
+                        }
+                        movies = freshMovies;
+                    }
+                    
+                    // Show movies in a modal
+                    const modal = document.createElement('div');
+                    modal.className = 'modal';
+                    modal.innerHTML = `
+                        <div class="modal-content">
+                            <h2>Upcoming Movies (${movies.length} movies)</h2>
+                            <div class="movies-grid">
+                                ${movies.map(movie => `
+                                    <div class="movie-card">
+                                        <h3>${movie.title}</h3>
+                                        
+                                        <a href="${movie.url}" target="_blank">View on IMDb</a>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <button onclick="this.parentElement.parentElement.remove()">Close</button>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('Error accessing upcoming movies: ' + error.message);
+                }
+            }
+
+            // Check admin status on page load
+            checkAdminStatus();
+
+            // Check admin status on token change
+            window.addEventListener('storage', checkAdminStatus);
+
+        function navigateToGraph() {
+            window.location.href = '/graph';
+        }
+
+        async function downloadReport() {
+            try {
+                const token = localStorage.getItem('token');
+                if (!token) {
+                    alert('Please login as admin first');
+                    return;
+                }
+                
+                const response = await fetch('/api/report/download', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/csv',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `latest_releases_${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error downloading report. Please try again.');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+    </script>
+    
+    <!-- Add this script at the end of the body -->
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <script src="/static/js/script.js"></script>
+</body>
+</html>
