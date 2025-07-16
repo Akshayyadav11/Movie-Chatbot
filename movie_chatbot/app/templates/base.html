@@ -60,19 +60,21 @@
             <a href="/" class="logo">MovieBot</a>
             <div class="nav-links">
                 <a href="/" class="nav-link">Home</a>
-                <div id="adminFeatures" style="display: none;">
-                    <button class="nav-link btn btn-primary" onclick="downloadReport()">
-                        <i class="fas fa-download"></i> Latest Releases 
-                    </button>
-                    <a href="/admin/users" class="nav-link btn btn-primary">
-                        <i class="fas fa-users"></i> User Management
-                    </a>
-                    <!-- <button class="nav-link btn btn-primary" onclick="navigateToGraph()">
-                        <i class="fas fa-chart-bar"></i> Movie Graph
-                    </button> -->
-                    <button class="nav-link btn btn-primary" onclick="navigateUpcomingMovies()">
-                        <i class="fas fa-calendar-alt"></i> Upcoming Movies
-                    </button>
+                <div id="userMenu" style="display: none;">
+                    <div id="adminFeatures" style="display: none;">
+                        <button class="nav-link btn btn-primary" onclick="navigateUpcomingMovies()">
+                            <i class="fas fa-calendar-alt"></i> Upcoming Movies
+                        </button>
+                        <button class="nav-link btn btn-primary" onclick="downloadReport()">
+                            <i class="fas fa-download"></i> Latest Releases 
+                        </button>
+                        <a href="/admin/users" class="nav-link btn btn-primary">
+                            <i class="fas fa-users"></i> User Management
+                        </a>
+                        <!-- <button class="nav-link btn btn-primary" onclick="navigateToGraph()">
+                            <i class="fas fa-chart-bar"></i> Movie Graph
+                        </button> -->
+                    </div>
                     <button class="nav-link btn btn-primary" onclick="logout()">
                         <i class="fas fa-sign-out-alt"></i> Logout
                     </button>
@@ -86,18 +88,46 @@
         </div>
     </nav>
     <script>
-            // Check for token and show/hide admin features
-            function checkAdminStatus() {
+            // Check for token and show/hide user menu and admin features
+            async function checkAdminStatus() {
                 const token = localStorage.getItem('token');
+                const userMenu = document.getElementById('userMenu');
                 const adminFeatures = document.getElementById('adminFeatures');
                 const loginButton = document.getElementById('loginButton');
                 
                 if (token) {
-                    adminFeatures.style.display = 'block';
-                    loginButton.style.display = 'none';
+                    try {
+                        // Show user menu
+                        if (userMenu) userMenu.style.display = 'block';
+                        
+                        // Fetch current user info to check admin status
+                        const response = await fetch('/api/users/me/', {
+                            headers: {
+                                'Authorization': `Bearer ${token}`
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            const user = await response.json();
+                            // Only show admin features if user is admin
+                            if (adminFeatures) {
+                                adminFeatures.style.display = user.is_admin ? 'block' : 'none';
+                            }
+                        } else {
+                            if (adminFeatures) adminFeatures.style.display = 'none';
+                        }
+                        
+                        if (loginButton) loginButton.style.display = 'none';
+                    } catch (error) {
+                        console.error('Error checking admin status:', error);
+                        if (adminFeatures) adminFeatures.style.display = 'none';
+                        if (userMenu) userMenu.style.display = 'none';
+                        if (loginButton) loginButton.style.display = 'block';
+                    }
                 } else {
-                    adminFeatures.style.display = 'none';
-                    loginButton.style.display = 'block';
+                    if (userMenu) userMenu.style.display = 'none';
+                    if (adminFeatures) adminFeatures.style.display = 'none';
+                    if (loginButton) loginButton.style.display = 'block';
                 }
             }
 
@@ -190,9 +220,22 @@
             }
         });
 
-        function logout() {
-            localStorage.removeItem('token');
-            window.location.href = '/';
+        async function logout() {
+            try {
+                // Call the logout endpoint to clear the server-side session
+                await fetch('/api/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+            } catch (error) {
+                console.error('Error during logout:', error);
+            } finally {
+                // Clear client-side token and redirect
+                localStorage.removeItem('token');
+                window.location.href = '/';
+            }
         }
     </script>
     
