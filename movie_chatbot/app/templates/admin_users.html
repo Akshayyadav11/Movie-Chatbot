@@ -290,7 +290,17 @@ async function editUser(userId) {
 async function saveUser() {
     try {
         const token = localStorage.getItem('token');
-        const formData = new FormData(document.getElementById('userForm'));
+        const form = document.getElementById('userForm');
+        const formData = new FormData(form);
+        
+        // Convert FormData to plain object
+        const userData = {
+            username: formData.get('username'),
+            email: formData.get('email'),
+            password: formData.get('password'),
+            is_active: document.getElementById('isActive').checked,
+            is_admin: document.getElementById('isAdmin').checked
+        };
         
         const response = await fetch(
             userIdToEdit ? `/api/users/${userIdToEdit}` : '/api/users',
@@ -300,7 +310,7 @@ async function saveUser() {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: formData
+                body: JSON.stringify(userData)
             }
         );
         
