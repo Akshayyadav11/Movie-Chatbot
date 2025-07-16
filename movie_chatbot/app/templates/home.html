@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <h1 class="display-4 mb-4">Welcome to Movie Chatbot</h1>
+            <p class="lead">Your personal movie recommendation assistant</p>
+            
+            <div id="authButtons" class="mt-4">
+                <!-- <a href="/admin/login" class="btn btn-primary btn-lg me-3">Login</a> -->
+                <a href="#" class="btn btn-outline-primary btn-lg" id="tryDemoBtn">Try Demo</a>
+            </div>
+            
+            <div id="chatButton" class="mt-4" style="display: none;">
+                <a href="/chat" class="btn btn-primary btn-lg">Go to Chatbot</a>
+            </div>
+            
+
+        </div>
+    </div>
+</div>
+
+<script>
+// Check if user is logged in
+async function checkAuthStatus() {
+    const token = localStorage.getItem('token');
+    const authButtons = document.getElementById('authButtons');
+    const chatButton = document.getElementById('chatButton');
+    
+    if (token) {
+        try {
+            const response = await fetch('/api/users/me/', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            
+            if (response.ok) {
+                // User is authenticated
+                authButtons.style.display = 'none';
+                chatButton.style.display = 'block';
+            } else {
+                // Token is invalid
+                localStorage.removeItem('token');
+                authButtons.style.display = 'block';
+                chatButton.style.display = 'none';
+            }
+        } catch (error) {
+            console.error('Error checking auth status:', error);
+            localStorage.removeItem('token');
+            authButtons.style.display = 'block';
+            chatButton.style.display = 'none';
+        }
+    } else {
+        authButtons.style.display = 'block';
+        chatButton.style.display = 'none';
+    }
+}
+
+// Handle Try Demo button click
+document.getElementById('tryDemoBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    // For demo, we'll just redirect to the chat page
+    // The server will handle authentication requirements
+    window.location.href = '/chat';
+});
+
+// Check auth status when page loads
+document.addEventListener('DOMContentLoaded', checkAuthStatus);
+</script>
+{% endblock %}

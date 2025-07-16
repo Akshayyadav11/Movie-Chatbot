@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from fastapi.security import OAuth2PasswordRequestForm
 from . import auth, database, models, schemas
+from .auth import verify_token
 
 # Initialize templates
 from fastapi.templating import Jinja2Templates
@@ -218,6 +219,15 @@ async def startup_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
+    # Serve the home page for all users (no authentication required)
+    return templates.TemplateResponse("home.html", {"request": request})
+
+@app.get("/chat", response_class=HTMLResponse)
+async def chat_interface(request: Request, token: str = Cookie(None)):
+    # Require authentication for the chatbot interface
+    if not token or not verify_token(token):
+        return RedirectResponse(url="/admin/login")
+    
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/graph")
