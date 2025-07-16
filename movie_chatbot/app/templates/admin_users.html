@@ -7,7 +7,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h3>User Management</h3>
-                    <button class="btn btn-primary" data-toggle="modal" data-target="#userModal">
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal" id="addUserBtn">
                         <i class="fas fa-plus"></i> Add New User
                     </button>
                 </div>
@@ -33,16 +33,12 @@
         </div>
     </div>
 </div>
-<!-- 
-
-<div class="modal fade" id="userModal" tabindex="-1" role="dialog">
+<div class="modal fade" id="userModal" tabindex="-1" role="dialog" style="display: none;" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New User</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="userForm">
@@ -73,12 +69,12 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveUser()">Save</button>
             </div>
         </div>
     </div>
-</div> -->
+</div>
 
 <style>
 /* User Management Styles */
@@ -128,6 +124,43 @@ async function checkAuth() {
 document.addEventListener('DOMContentLoaded', async () => {
     if (await checkAuth()) {
         loadUsers();
+        
+        // Get the modal element
+        const userModalEl = document.getElementById('userModal');
+        
+        // Initialize the modal with JavaScript
+        if (userModalEl) {
+            // Hide the modal initially
+            userModalEl.style.display = 'none';
+            userModalEl.classList.remove('show');
+            
+            // Add an event listener for when the modal is about to be shown
+            userModalEl.addEventListener('show.bs.modal', function () {
+                // Initialize the form when the modal is shown
+                userIdToEdit = null;
+                const form = document.getElementById('userForm');
+                if (form) form.reset();
+                
+                const isActive = document.getElementById('isActive');
+                if (isActive) isActive.checked = true;
+                
+                const isAdmin = document.getElementById('isAdmin');
+                if (isAdmin) isAdmin.checked = false;
+                
+                const modalTitle = document.querySelector('.modal-title');
+                if (modalTitle) modalTitle.textContent = 'Add New User';
+                
+                // Ensure modal is visible
+                userModalEl.style.display = 'block';
+                userModalEl.classList.add('show');
+            });
+            
+            // Handle modal hide event
+            userModalEl.addEventListener('hidden.bs.modal', function () {
+                userModalEl.style.display = 'none';
+                userModalEl.classList.remove('show');
+            });
+        }
     }
 });
 
@@ -200,11 +233,21 @@ function renderUsers(users) {
 // Open add user modal
 function openAddUserModal() {
     userIdToEdit = null;
-    document.getElementById('userForm').reset();
-    document.getElementById('isActive').checked = true;
-    document.getElementById('isAdmin').checked = false;
-    document.querySelector('.modal-title').textContent = 'Add New User';
-    $('#userModal').modal('show');
+    const form = document.getElementById('userForm');
+    if (form) form.reset();
+    
+    const isActive = document.getElementById('isActive');
+    if (isActive) isActive.checked = true;
+    
+    const isAdmin = document.getElementById('isAdmin');
+    if (isAdmin) isAdmin.checked = false;
+    
+    const modalTitle = document.querySelector('.modal-title');
+    if (modalTitle) modalTitle.textContent = 'Add New User';
+    
+    // Initialize and show the modal using Bootstrap 5
+    const userModal = new bootstrap.Modal(document.getElementById('userModal'));
+    userModal.show();
 }
 
 // Open edit user modal
