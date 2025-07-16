@@ -377,13 +377,34 @@ async def download_public_report():
         if movies_collection is None:
             raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
             
-        # Get latest movies sorted by year
-        latest_movies = list(movies_collection.find({"year": {"$ne": None}})
-            .sort("year", -1)
-            .limit(20))
+        # Get current year as both string and integer for comparison
+        current_year = datetime.now().year
+        current_year_str = str(current_year)
+        
+        # First try to find movies where year matches as string or integer
+        latest_movies = list(movies_collection.find({
+            "$and": [
+                {
+                    "$or": [
+                        {"year": current_year},
+                        {"year": current_year_str}
+                    ]
+                },
+                {"type": {"$ne": "upcoming"}}  # Exclude upcoming movies
+            ]
+        })
+        .sort("rating", -1)  # Sort by rating (highest first)
+        .limit(100))  # Get up to 100 top-rated movies
         
         if not latest_movies:
-            raise HTTPException(status_code=404, detail="No movies found")
+            # If no movies found for current year, get the latest available movies as fallback
+            latest_movies = list(movies_collection.find({"year": {"$ne": None}})
+                .sort("year", -1)
+                .limit(20))
+                
+            logger.info(f"No movies found for current year {current_year}, falling back to latest movies")
+            if not latest_movies:
+                raise HTTPException(status_code=404, detail="No movies found")
             
         # Prepare CSV content
         csv_content = "Title,Year,Rating,Genres\n"
