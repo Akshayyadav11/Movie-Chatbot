@@ -204,6 +204,23 @@ body {
     border-radius: 4px;
 }
 
+/* Fix checkbox spacing */
+.form-check {
+    padding-left: 0;
+    display: flex;
+    align-items: center;
+}
+
+.form-check-input {
+    margin-left: 0;
+    margin-right: 0.5rem;
+    margin-top: 0;
+}
+
+.form-check-label {
+    margin-bottom: 0;
+}
+
 /* Responsive table */
 .table-responsive {
     display: block;
