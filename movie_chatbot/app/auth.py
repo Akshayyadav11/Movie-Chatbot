@@ -1,12 +1,15 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from . import models, schemas
 from .database import get_db
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Security settings
 SECRET_KEY = "your-secret-key-here"
@@ -57,6 +60,45 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(models.User).filter(models.User.username == username).first()
     if user is None:
         raise credentials_exception
+    return user
+
+async def get_session_user(request: Request, db: Session = Depends(get_db)):
+    # Debug logging
+    logger.info(f"Request cookies: {dict(request.cookies)}")
+    token = request.cookies.get('token')
+    if not token:
+        logger.warning("No token found in cookies")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+    
+    try:
+        logger.info(f"Validating token: {token[:10]}...")  # Log first 10 chars for security
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            logger.error("No username in token payload")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+            )
+    except JWTError as e:
+        logger.error(f"JWT error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
+    
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None:
+        logger.error(f"User not found for username: {username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    
+    logger.info(f"Successfully authenticated user: {username}")
     return user
 
 def get_current_active_user(current_user: models.User = Depends(get_current_user)):

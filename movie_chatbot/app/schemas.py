@@ -12,9 +12,18 @@ class TokenData(BaseModel):
 
 class UserBase(BaseModel):
     username: str
+    email: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
+    is_active: bool = True
+    is_admin: bool = False
+
+class UserUpdate(BaseModel):
+    email: Optional[str] = None
+    password: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
 
 class User(UserBase):
     id: int

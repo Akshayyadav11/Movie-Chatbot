@@ -14,6 +14,9 @@
     <!-- CSS -->
     <link href="{{ url_for('static', path='/css/style.css') }}" rel="stylesheet">
     
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
           integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
@@ -61,9 +64,12 @@
                     <button class="nav-link btn btn-primary" onclick="downloadReport()">
                         <i class="fas fa-download"></i> Download Report
                     </button>
-                    <button class="nav-link btn btn-primary" onclick="navigateToGraph()">
+                    <a href="/admin/users" class="nav-link btn btn-primary">
+                        <i class="fas fa-users"></i> User Management
+                    </a>
+                    <!-- <button class="nav-link btn btn-primary" onclick="navigateToGraph()">
                         <i class="fas fa-chart-bar"></i> Movie Graph
-                    </button>
+                    </button> -->
                     <button class="nav-link btn btn-primary" onclick="navigateUpcomingMovies()">
                         <i class="fas fa-calendar-alt"></i> Upcoming Movies
                     </button>
@@ -96,58 +102,9 @@
             }
 
             // Navigate to upcoming movies
-            async function navigateUpcomingMovies() {
-                try {
-                    // First try to fetch movies without force scrape
-                    const response = await fetch('/api/upcoming-movies');
-                    
-                    if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.detail || 'Failed to fetch upcoming movies');
-                    }
-                    
-                    const movies = await response.json();
-                    
-                    // If no movies found, try force scraping
-                    if (movies.length === 0) {
-                        const scrapeResponse = await fetch('/api/upcoming-movies?force_scrape=true');
-                        if (!scrapeResponse.ok) {
-                            throw new Error('Failed to scrape movies');
-                        }
-                        
-                        // Fetch movies again after successful scrape
-                        const freshMovies = await scrapeResponse.json();
-                        if (freshMovies.length === 0) {
-                            throw new Error('No movies found even after scraping');
-                        }
-                        movies = freshMovies;
-                    }
-                    
-                    // Show movies in a modal
-                    const modal = document.createElement('div');
-                    modal.className = 'modal';
-                    modal.innerHTML = `
-                        <div class="modal-content">
-                            <h2>Upcoming Movies (${movies.length} movies)</h2>
-                            <div class="movies-grid">
-                                ${movies.map(movie => `
-                                    <div class="movie-card">
-                                        <h3>${movie.title}</h3>
-                                        
-                                        <a href="${movie.url}" target="_blank">View on IMDb</a>
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <button onclick="this.parentElement.parentElement.remove()">Close</button>
-                        </div>
-                    `;
-                    document.body.appendChild(modal);
-                    
-                } catch (error) {
-                    console.error('Error:', error);
-                    alert('Error accessing upcoming movies: ' + error.message);
-                }
-            }
+            function navigateUpcomingMovies() {
+            window.location.href = '/upcoming-movies';
+        }
 
             // Check admin status on page load
             checkAdminStatus();
@@ -193,6 +150,45 @@
                 alert('Error downloading report. Please try again.');
             }
         }
+
+        // Handle login form submission
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json',
+                        'Origin': 'http://0.0.0.0:8000'  // Set the origin
+                    },
+                    credentials: 'include',  // Include cookies
+                    body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Login failed');
+                }
+                
+                const data = await response.json();
+                const token = data.access_token;
+                
+                // Store token in localStorage (for API requests)
+                localStorage.setItem('token', token);
+                
+                // The token is already set as a cookie by the server
+                
+                // Redirect to admin dashboard
+                window.location.href = '/admin/users';
+            } catch (error) {
+                alert('Login failed: ' + error.message);
+            }
+        });
 
         function logout() {
             localStorage.removeItem('token');

@@ -16,6 +16,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from . import auth, database, models, schemas
 
 # Initialize templates
+from fastapi.templating import Jinja2Templates
 templates = Jinja2Templates(directory="app/templates")
 
 # Import config first to set up logging
@@ -32,6 +33,7 @@ from .database import get_db, init_db, get_mongo_client
 from .scraper import scrape_imdb_movies
 from .scrapers.upcoming_movies_scraper import UpcomingMoviesScraper
 from .api.upcoming_movies import router as upcoming_movies_router
+from .api.users import router as users_router
 
 app = FastAPI(
     title="Movie Chatbot API",
@@ -45,10 +47,11 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://0.0.0.0:8000"],  # Replace with your actual frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Set-Cookie"],
 )
 
 # Token endpoint
@@ -68,7 +71,19 @@ async def login_for_access_token(
     access_token = auth.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    
+    # Create response with cookie
+    response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response.set_cookie(
+        key="token",
+        value=access_token,
+        httponly=True,  # Prevent JavaScript access for security
+        samesite="Lax",  # Allow cross-site requests
+        max_age=auth.ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Convert minutes to seconds
+        secure=False,  # Set to True in production
+        path="/"
+    )
+    return response
 
 # Admin login route
 @app.get("/admin/login")
@@ -76,8 +91,48 @@ async def admin_login(request: Request):
     return templates.TemplateResponse("admin_login.html", {"request": request})
 
 # Include routers
+# User management route
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users(
+    request: Request,
+    current_user: models.User = Depends(auth.get_session_user)
+):
+    return templates.TemplateResponse("admin_users.html", {"request": request})
+
+@app.get("/upcoming-movies", response_class=HTMLResponse)
+async def upcoming_movies(
+    request: Request,
+    current_user: models.User = Depends(auth.get_session_user),
+    db: Session = Depends(get_db)
+):
+    # Get MongoDB collection
+    _, _, movies_collection = get_mongo_client()
+    if movies_collection is None:
+        raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
+        
+    # Get all upcoming movies
+    movies = list(movies_collection.find({'type': 'upcoming'}))
+    
+    # Organize movies by release date
+    movies_by_date = {}
+    for movie in movies:
+        release_date = movie.get('release_date', 'Unknown')
+        if release_date not in movies_by_date:
+            movies_by_date[release_date] = []
+        movies_by_date[release_date].append({
+            'title': movie.get('title', ''),
+            'url': movie.get('url', ''),
+            'release_date': release_date
+        })
+    
+    return templates.TemplateResponse("upcoming_movies.html", {
+        "request": request,
+        "movies_by_date": movies_by_date
+    })
+
 # Include routers
 app.include_router(upcoming_movies_router, tags=["upcoming_movies"])
+app.include_router(users_router, prefix="/api", tags=["users"])
 
 # Configure static files and templates
 STATIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
