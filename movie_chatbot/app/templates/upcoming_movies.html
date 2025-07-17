@@ -4,10 +4,14 @@
 <div class="container">
     <h1>Upcoming Movies</h1>
     
-    <div class="actions mb-4">
+    <div class="actions mb-4 flex items-center gap-4">
         <button id="scrapeButton" class="btn btn-primary">
             <i class="fas fa-sync-alt"></i> Scrape New Movies
         </button>
+        <div class="text-gray-600">
+            <i class="fas fa-film"></i> 
+            <span id="movieCount">{{ total_movies|default(0) }}</span> movies found
+        </div>
     </div>
 
     <div id="moviesContainer">
@@ -40,7 +44,7 @@
     <script>
         document.getElementById('scrapeButton').addEventListener('click', async () => {
             try {
-                const response = await fetch('/api/upcoming-movies/scrape', {
+                const response = await fetch('/api/upcoming-movies/scrape-upcoming-movies', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -48,7 +52,8 @@
                 });
                 
                 if (response.ok) {
-                    alert('Successfully scraped new movies!');
+                    const data = await response.json();
+                    alert(`Successfully scraped ${data.count} new movies!`);
                     window.location.reload();
                 } else {
                     const error = await response.json();

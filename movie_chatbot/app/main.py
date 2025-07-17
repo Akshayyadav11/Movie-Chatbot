@@ -144,13 +144,17 @@ async def upcoming_movies(
             'release_date': release_date
         })
     
+    # Calculate total movie count
+    total_movies = sum(len(movies) for movies in movies_by_date.values())
+    
     return templates.TemplateResponse("upcoming_movies.html", {
         "request": request,
-        "movies_by_date": movies_by_date
+        "movies_by_date": movies_by_date,
+        "total_movies": total_movies
     })
 
 # Include routers
-app.include_router(upcoming_movies_router, tags=["upcoming_movies"])
+app.include_router(upcoming_movies_router, prefix="/api", tags=["upcoming_movies"])
 app.include_router(users_router, prefix="/api", tags=["users"])
 
 # Configure static files and templates

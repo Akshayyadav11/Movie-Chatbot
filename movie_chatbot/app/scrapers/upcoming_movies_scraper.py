@@ -22,19 +22,28 @@ class UpcomingMoviesScraper:
             'Accept-Encoding': 'gzip, deflate, br'
         })
 
-    def scrape_and_store_movies(self, movies_collection) -> None:
-        """Scrape upcoming movies from IMDb and store them in MongoDB"""
+    def scrape_and_store_movies(self, movies_collection) -> int:
+        """Scrape upcoming movies from IMDb and store them in MongoDB
+        
+        Args:
+            movies_collection: MongoDB collection to store movies
+            
+        Returns:
+            int: Number of movies scraped and stored
+        """
         try:
             # Check if collection is valid
-            if not movies_collection:
-                logger.error("Invalid MongoDB collection")
-                return
+            if movies_collection is None:
+                logger.error("Invalid MongoDB collection: collection is None")
+                raise ValueError("Invalid MongoDB collection")
 
             # Make request to IMDb calendar page
             response = self.session.get(self.base_url)
             if response.status_code != 200:
                 logger.error(f"Failed to fetch IMDb calendar page: {response.status_code}")
-                return
+                return 0
+                
+            scraped_count = 0
 
             # Parse HTML
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -55,46 +64,47 @@ class UpcomingMoviesScraper:
                 # Find all movie items in this section
                 movie_items = next_div.find_all('li', class_='ipc-metadata-list-summary-item')
                 for item in movie_items:
-                    # Find the title link
-                    title_link = item.find('a', class_='ipc-metadata-list-summary-item__t')
-                    if not title_link:
+                    try:
+                        # Find the title link
+                        title_link = item.find('a', class_='ipc-metadata-list-summary-item__t')
+                        if not title_link:
+                            continue
+                            
+                        # Extract title and year from the text
+                        title_text = title_link.text.strip()
+                        title = title_text.split('(')[0].strip()
+                        year = title_text.split('(')[1].split(')')[0] if '(' in title_text else None
+                        
+                        # Get URL
+                        url = f"https://www.imdb.com{title_link.get('href')}"
+                        
+                        # Create movie dictionary
+                        movie = {
+                            "title": title,
+                            "year": year,
+                            "url": url,
+                            "created_at": datetime.utcnow().isoformat(),
+                            "last_updated": datetime.utcnow().isoformat(),
+                            "release_date": release_date,
+                            "type": "upcoming"
+                        }
+                        
+                        # Store or update movie in database
+                        result = movies_collection.update_one(
+                            {"url": url},
+                            {"$set": movie},
+                            upsert=True
+                        )
+                        
+                        if result.upserted_id or result.modified_count > 0:
+                            scraped_count += 1
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing movie {title_text if 'title_text' in locals() else 'unknown'}: {str(e)}")
                         continue
                         
-                    # Extract title and year from the text
-                    title_text = title_link.text.strip()
-                    title = title_text.split('(')[0].strip()
-                    year = title_text.split('(')[1].split(')')[0] if '(' in title_text else None
-                    
-                    # Get URL
-                    url = f"https://www.imdb.com{title_link.get('href')}"
-                    
-                    # Create movie dictionary
-                    movie = {
-                        "title": title,
-                        "year": year,
-                        "url": url,
-                        "created_at": datetime.utcnow().isoformat(),
-                        "last_updated": datetime.utcnow().isoformat(),
-                        "release_date": release_date,
-                        "type": 'upcoming'
-                    }
-                    
-                    # Store movie if it doesn't exist
-                    existing_movie = movies_collection.find_one({
-                        'title': movie['title'],
-                        'type': 'upcoming'
-                    })
-                    
-                    if existing_movie:
-                        logger.info(f"Updating existing movie: {movie['title']}")
-                        movies_collection.update_one(
-                            {'_id': existing_movie['_id']},
-                            {'$set': movie}
-                        )
-                    else:
-                        logger.info(f"Storing new movie: {movie['title']}")
-                        movies_collection.insert_one(movie)
+            return scraped_count
 
         except Exception as e:
-            logger.error(f"Error scraping movies: {str(e)}", exc_info=True)
+            logger.error(f"Error in scrape_and_store_movies: {str(e)}")
             raise
