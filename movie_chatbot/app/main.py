@@ -389,57 +389,52 @@ async def get_movie_graph_data():
         }).sort("year", 1))
         
         if not movies:
-            return {
-                "labels": [],
-                "data": [],
-                "movies": []
-            }
+            return {"data": [], "labels": [], "movies": []}
+            
+        # Group movies by release date
+        movie_counts = {}
+        for movie in movies:
+            if "release_date" in movie:
+                try:
+                    date_str = movie["release_date"]
+                    # Remove any extra spaces
+                    date_str = date_str.strip()
+                    # Split into month/day and year
+                    parts = date_str.split(',')
+                    if len(parts) == 2:
+                        date_part = parts[0].strip()
+                        year = parts[1].strip()
+                        full_date_str = f"{date_part}, {year}"
+                        movie_counts[full_date_str] = movie_counts.get(full_date_str, 0) + 1
+                except Exception as e:
+                    logger.error(f"Error processing movie date {date_str}: {str(e)}")
+                    continue
+        
+        # Sort dates in chronological order
+        dates = sorted(movie_counts.keys(), key=lambda x: datetime.strptime(x, "%b %d, %Y"))
         
         # Prepare data for chart
+        labels = dates
+        data = [movie_counts[date] for date in dates]
+            
+        # Prepare chart data
         chart_data = {
-            "labels": [],
-            "data": [],
-            "movies": []
+            "labels": labels,
+            "data": data
         }
         
-        # Group movies by year
-        year_movies = {}
-        for movie in movies:
-            try:
-                year = movie.get('year', '')
-                title = movie.get('title', '')
-                genres = movie.get('genres', [])
-                
-                if year not in year_movies:
-                    year_movies[year] = []
-                
-                # Store the original year for display
-                year_movies[year].append({
-                    "title": title,
-                    "year": year,  # Store original year
-                    "genres": genres
-                })
-            except Exception as e:
-                logger.error(f"Error processing movie {title}: {str(e)}")
-                continue
-        
-        # Prepare chart data
-        for year in sorted(year_movies.keys()):
-            try:
-                # Count movies for this year
-                movie_count = len(year_movies[year])
-                
-                chart_data["labels"].append(year)
-                chart_data["data"].append(movie_count)
-                chart_data["movies"].extend(year_movies[year])
-            except Exception as e:
-                logger.error(f"Error processing year {year}: {str(e)}")
-                continue
-        
         return chart_data
+        
     except Exception as e:
-        logger.error(f"Error in get_movie_graph_data: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting movie graph data: {str(e)}")
+        return {"data": [], "labels": []}  # Return empty data instead of raising error
+
+@app.get("/movie-graph")
+async def movie_graph_page(request: Request):
+    """Render the movie graph page"""
+    return templates.TemplateResponse("movie_graph.html", {"request": request})
+                
+               
 
 @app.get("/api/report/download")
 async def download_public_report():
