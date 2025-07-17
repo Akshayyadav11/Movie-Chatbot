@@ -129,20 +129,60 @@ async def upcoming_movies(
     if movies_collection is None:
         raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
         
+    from datetime import datetime
+    
+    # Get current date
+    current_date = datetime.now()
+    
     # Get all upcoming movies
     movies = list(movies_collection.find({'type': 'upcoming'}))
     
-    # Organize movies by release date
+    # Organize movies by release date and filter out past dates
     movies_by_date = {}
     for movie in movies:
         release_date = movie.get('release_date', 'Unknown')
+        
+        # Skip if release date is None or empty
+        if not release_date:
+            release_date = 'Unknown'
+        
+        # Handle known date formats
+        if release_date != 'Unknown':
+            try:
+                # Try parsing with the expected format
+                release_dt = datetime.strptime(release_date, '%b %d, %Y')
+                
+                # Only include movies from today onwards
+                if release_dt.date() < current_date.date():
+                    continue
+                    
+                # Format the date consistently
+                release_date = release_dt.strftime('%b %d, %Y')
+                    
+            except (ValueError, TypeError) as e:
+                # If date parsing fails, log the error but keep the movie
+                logger.warning(f"Could not parse date '{release_date}': {str(e)}")
+                release_date = 'Unknown'
+            
         if release_date not in movies_by_date:
             movies_by_date[release_date] = []
+            
         movies_by_date[release_date].append({
             'title': movie.get('title', ''),
             'url': movie.get('url', ''),
             'release_date': release_date
         })
+    
+    # Sort movies by release date
+    def get_sort_key(date_str):
+        try:
+            return datetime.strptime(date_str, '%b %d, %Y')
+        except (ValueError, TypeError):
+            # For 'Unknown' or invalid dates, put them at the end
+            return datetime.max
+    
+    # Sort the dictionary by date
+    movies_by_date = dict(sorted(movies_by_date.items(), key=lambda x: get_sort_key(x[0])))
     
     # Calculate total movie count
     total_movies = sum(len(movies) for movies in movies_by_date.values())
