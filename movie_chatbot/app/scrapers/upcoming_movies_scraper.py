@@ -53,12 +53,13 @@ class UpcomingMoviesScraper:
             url_path = title_elem.get('href', '').split('?')[0]
             url = f"https://www.imdb.com{url_path}" if url_path.startswith('/') else url_path
             
-            # Get release date from the section header (parent article's data-testid="release-date")
-            release_date = ""
-            date_section = movie_item.find_previous('div', {'data-testid': 'release-date'})
-            if date_section:
-                release_date = date_section.get_text(strip=True)
-                logger.debug(f"Found release date: {release_date}")
+            # Get release date from the movie title (e.g., "Jul 18, 2025")
+            release_date = re.search(r'^(\w+ \d+, \d{4})', title_text)
+            if release_date:
+                release_date = release_date.group(1)
+                logger.debug(f"Found release date in title: {release_date}")
+            else:
+                logger.warning(f"No release date found in title: {title_text}")
             
             # Get genres - they're in a list with specific classes
             genres = []

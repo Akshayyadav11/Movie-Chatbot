@@ -366,7 +366,6 @@ async def get_upcoming_movies(limit: int = 5):
 @app.get("/api/movie/graph")
 async def get_movie_graph_data():
     """
-    Get movie data for the graph page
     Returns movie release counts per year for current and next year
     """
     try:
@@ -375,52 +374,57 @@ async def get_movie_graph_data():
         if movies_collection is None:
             raise HTTPException(status_code=500, detail="Failed to connect to MongoDB")
             
-        # Get current year and next year
+        # Get current year
         current_year = datetime.now().year
-        next_year = current_year + 1
         
-        # Query movies for current and next year
+        # Query movies for current year
         movies = list(movies_collection.find({
-            "year": {"$exists": True},
-            "$or": [
-                {"year": {"$regex": f"{current_year}"}},
-                {"year": {"$regex": f"{next_year}"}}
-            ]
-        }).sort("year", 1))
+            "release_date": {"$exists": True}
+        }).sort("release_date", 1))
         
-        if not movies:
-            return {"data": [], "labels": [], "movies": []}
+        # Filter movies by current year
+        current_year_movies = [
+            movie for movie in movies 
+            if str(current_year) in movie.get("release_date", "")
+        ]
+        
+        if not current_year_movies:
+            return {"data": [], "labels": [], "movies": {}}
             
-        # Group movies by release date
-        movie_counts = {}
-        for movie in movies:
-            if "release_date" in movie:
-                try:
-                    date_str = movie["release_date"]
-                    # Remove any extra spaces
-                    date_str = date_str.strip()
-                    # Split into month/day and year
-                    parts = date_str.split(',')
-                    if len(parts) == 2:
-                        date_part = parts[0].strip()
-                        year = parts[1].strip()
-                        full_date_str = f"{date_part}, {year}"
-                        movie_counts[full_date_str] = movie_counts.get(full_date_str, 0) + 1
-                except Exception as e:
-                    logger.error(f"Error processing movie date {date_str}: {str(e)}")
-                    continue
+        # Group movies by release date and collect titles
+        movie_data = {}
+        for movie in current_year_movies:
+            if "release_date" in movie and "title" in movie:
+                date_str = movie["release_date"]
+                if date_str not in movie_data:
+                    movie_data[date_str] = []
+                movie_data[date_str].append({
+                    "title": movie["title"],
+                    "year": movie.get("year", "")
+                })
         
         # Sort dates in chronological order
-        dates = sorted(movie_counts.keys(), key=lambda x: datetime.strptime(x, "%b %d, %Y"))
+        dates = sorted(movie_data.keys(), key=lambda x: datetime.strptime(x, "%b %d, %Y"))
         
-        # Prepare data for chart
+        # Prepare chart data
+        chart_data = {
+            "labels": dates,
+            "data": [len(movie_data.get(date, [])) for date in dates],
+            "movies": movie_data
+        }
+        
         labels = dates
-        data = [movie_counts[date] for date in dates]
+        data = []
+        
+        for date in dates:
+            movies_on_date = movie_data[date]
+            data.append(len(movies_on_date))  # Count movies for each date
             
         # Prepare chart data
         chart_data = {
             "labels": labels,
-            "data": data
+            "data": data,
+            "movies": movie_data  # Include the movie data for tooltips
         }
         
         return chart_data
