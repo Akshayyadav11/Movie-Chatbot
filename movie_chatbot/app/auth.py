@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Security settings
-SECRET_KEY = "your-secret-key-here"
+SECRET_KEY="82A9AToEYADjBj_EDKwxqJjzcYTvYcqP_ta0V2FIPoA"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
